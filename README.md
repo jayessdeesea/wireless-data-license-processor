@@ -2,21 +2,14 @@
 
 This is a set of tools I use to process the wireless data license database.
 
-# 2. Helpful prompts
+The python files are completely generated from ChatGPT using the INSTRUCTIONS.md instructions.
 
-I have updated instructions for you
+# 2. Helpful prompts to GPT
 
-Please include all the fields for the schemas
-
-Please generate the test cases and run them. This may involve:
-* Add missing python includes
-* Address logic bugs
-* Refactor the code to be more testable
-
-Do my instructions contain anything that is ambiguous or inconsistent?  
+Tell me where my instructions are ambiguous and/or inconsistent
 
 I want a clean set of instructions I have provided to you so far that is appropriate for another
-ChatGPT instance. Please write them in a way the ChatGPT instance could regenerate the code.
+ChatGPT instance. Please write them in a way the ChatGPT instance could regenerate the code
 
 # 3. See Also
 

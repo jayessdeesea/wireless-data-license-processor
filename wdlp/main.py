@@ -1,111 +1,155 @@
-import os
 import zipfile
+import os
 import json
-import argparse
-import tempfile
+import logging
+import pyarrow as pa
 import pyarrow.parquet as pq
-import pandas as pd
-from io import TextIOWrapper
-from pathlib import Path
-
+from typing import Dict
+from schemas import ENSchema, AMSchema
 from pydantic import ValidationError
 
-from schemas import ENSchema, FASchema
-from typing import Optional, List
+# Constants
+SUPPORTED_SCHEMAS = {
+    "EN": ENSchema,
+    "AM": AMSchema
+}
+DEFAULT_INPUT_FILE = "l_amat.zip"
+DEFAULT_OUTPUT_DIR = "wdlp-output"
+DEFAULT_OUTPUT_FORMAT = "JSONL"
 
-def log_error(context: str, filename: str, line_number: int, expected: str, found: str):
-    print(f"Error in file '{filename}', line {line_number}: {context}. Expected: {expected}, Found: {found}")
 
-def process_zip_stream(input_zip: str, output_path: str, output_type: str, schema_mapping: dict):
-    with zipfile.ZipFile(input_zip, 'r') as zip_ref:
-        for entry in zip_ref.infolist():
-            if not entry.filename.endswith(".dat"):
-                continue
+def process_dat_file(file_name: str, input_stream, output_dir: str, output_format: str):
+    logging.info(f"Starting processing for file: {file_name}")
+    """
+    Process a single .dat file, validate its records, and write them directly to the output file.
 
-            record_type = Path(entry.filename).stem
-            if record_type not in schema_mapping:
-                print(f"Skipping unsupported file: {entry.filename} (No matching schema for record type '{record_type}').")
-                continue
+    :param file_name: Name of the .dat file.
+    :param input_stream: Input stream of the .dat file.
+    :param output_dir: Directory to save the output file.
+    :param output_format: Format of the output (JSONL, PARQUET, ION).
+    """
+    schema_name = file_name.split('.')[0].upper()
+    if schema_name not in SUPPORTED_SCHEMAS:
+        logging.info(f"Skipping file with unknown schema: {file_name}")
+        return
 
-            schema_cls = schema_mapping[record_type]
-            temp_file = Path(output_path) / f"{record_type}.tmp"
-            output_file = Path(output_path) / f"{record_type}.{output_type.lower()}"
+    schema = SUPPORTED_SCHEMAS[schema_name]
+    output_path = os.path.join(output_dir, f"{schema_name}.{output_format.lower()}")
 
-            print(f"Processing file: {entry.filename}")
-
+    if output_format.upper() == "JSONL":
+        with open(output_path, 'w', encoding='utf-8') as output_stream:
+            for line in input_stream:
+                try:
+                    record = parse_line(line.decode('utf-8').strip(), schema)
+                    output_stream.write(json.dumps(record) + '\n')
+                except ValidationError as e:
+                    raise ValueError(f"Schema validation error in file {file_name}: {e}")
+    elif output_format.upper() == "PARQUET":
+        records = []
+        for line in input_stream:
             try:
-                with zip_ref.open(entry, 'r') as infile, open(temp_file, 'w') as outfile:
-                    line_number = 0
-                    current_record = []
-                    for line in TextIOWrapper(infile):
-                        line_number += 1
-                        if line.strip():
-                            current_record.append(line.rstrip())
+                record = parse_line(line.decode('utf-8').strip(), schema)
+                records.append(record)
+            except ValidationError as e:
+                raise ValueError(f"Schema validation error in file {file_name}: {e}")
+        table = pa.Table.from_pylist(records)
+        pq.write_table(table, output_path)
+    elif output_format.upper() == "ION":
+        try:
+            import amazon.ion.simpleion as ion
+            with open(output_path, 'w', encoding='utf-8') as output_stream:
+                for line in input_stream:
+                    try:
+                        record = parse_line(line.decode('utf-8').strip(), schema)
+                        ion_text = ion.dumps(record, binary=False)
+                        output_stream.write(ion_text + '\n')
+                    except ValidationError as e:
+                        raise ValueError(f"Schema validation error in file {file_name}: {e}")
+        except ImportError:
+            raise NotImplementedError(
+                "ION support requires the amazon.ion library. Install it with 'pip install amazon.ion'")
+    else:
+        raise NotImplementedError(f"Output format {output_format} is not supported yet.")
 
-                            if line.strip().endswith('|'):
-                                raw_record = schema_cls.combine_multiline(current_record)
-                                fields = raw_record.split('|')
 
-                                fields = [field.strip() if field else None for field in fields]
-                                try:
-                                    if not fields[0]:
-                                        log_error("Missing required field 'Record Type'", entry.filename, line_number, "Record Type", str(fields[0]))
-                                        return  # Halt processing
+def parse_line(line: str, schema):
+    """
+    Parse and validate a single line from a .dat file.
 
-                                    if fields[0] != record_type:
-                                        log_error("Mismatched record type", entry.filename, line_number, record_type, fields[0])
-                                        return  # Halt processing
+    :param line: The line content.
+    :param schema: The schema to validate against.
+    :return: Validated record as a dictionary.
+    """
+    fields = [field if field != '' else None for field in line.split('|')[:-1]]
+    return schema(**dict(zip(schema.model_fields.keys(), fields))).model_dump()
 
-                                    data = schema_cls(**{
-                                        "Record Type": fields[0],
-                                        "Unique System Identifier": int(fields[1]) if fields[1] and fields[1].isdigit() else None,
-                                        "ULS File Number": fields[2],
-                                        "EBF Number": fields[3],
-                                        "Call Sign": fields[4],
-                                        "Description": fields[5],
-                                        "Status Date": schema_cls.validate_date(fields[6], line_number)
-                                    })
-                                    outfile.write(json.dumps(data.dict(by_alias=True)) + "\n")
-                                except (ValidationError, ValueError) as e:
-                                    log_error("Invalid row format", entry.filename, line_number, "Valid data", raw_record)
-                                    return  # Halt processing
-                                finally:
-                                    current_record = []
 
-                if output_type.lower() == "jsonl":
-                    os.rename(temp_file, output_file)
-                elif output_type.lower() == "parquet":
-                    with open(temp_file, 'r') as jsonl_file:
-                        records = [json.loads(line) for line in jsonl_file]
-                        df = pd.DataFrame(records)
-                        df.to_parquet(output_file, engine='pyarrow', index=False)
-                    os.remove(temp_file)
+def extract_zip(zip_path: str, output_dir: str, output_format: str):
+    """
+    Extract and process .dat files from a ZIP archive.
 
-            except Exception as e:
-                log_error("File processing failed", entry.filename, line_number, "Successful processing", str(e))
-                return
+    :param zip_path: Path to the ZIP archive.
+    :param output_dir: Directory to save the output files.
+    :param output_format: Format of the output (JSONL, PARQUET, ION).
+    """
+    if not zipfile.is_zipfile(zip_path):
+        raise ValueError(f"Invalid ZIP file: {zip_path}")
 
-def main():
-    parser = argparse.ArgumentParser(description="Process .dat files from a ZIP archive and transform them into JSONL or Parquet format.")
-    parser.add_argument("-i", "--input", default="l_amat.zip", help="Path to the input ZIP archive. Default is 'l_amat.zip'.")
-    parser.add_argument("-o", "--output", default="wdlp-output", help="Path to the output directory. Default is 'wdlp-output/'.")
-    parser.add_argument("-t", "--output-type", default="JSONL", choices=["JSONL", "parquet"], help="Output format: JSONL or parquet. Default is JSONL.")
-    parser.add_argument("-v", "--version", action="version", version="dat_to_jsonl_processor 2.0", help="Show program version and exit.")
+    os.makedirs(output_dir, exist_ok=True)
+
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        for file_name in zip_ref.namelist():
+            if not file_name.endswith(".dat"):
+                logging.info(f"Skipping unsupported file: {file_name}")
+                continue
+
+            with zip_ref.open(file_name) as input_stream:
+                process_dat_file(file_name, input_stream, output_dir, output_format)
+
+
+def print_summary(total_files: int, total_skipped_files: int):
+    """
+    Print a summary of the processing.
+
+    :param total_files: Total number of files processed.
+    :param total_skipped_files: Total number of skipped files.
+    """
+    logging.info("\n--- Processing Summary ---")
+    logging.info(f"Total files processed: {total_files}")
+    logging.info(f"Total skipped files: {total_skipped_files}")
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Process and validate .dat files from a ZIP archive.")
+    parser.add_argument("-i", "--input", default=DEFAULT_INPUT_FILE, help="Path to the ZIP archive.")
+    parser.add_argument("-o", "--output", default=DEFAULT_OUTPUT_DIR, help="Output directory.")
+    parser.add_argument("-t", "--output-file-format", default=DEFAULT_OUTPUT_FORMAT,
+                        help="Output file format (e.g., JSONL, PARQUET, ION).")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging.")
 
     args = parser.parse_args()
 
-    input_zip = args.input
-    output_path = args.output
-    output_type = args.output_type
+    logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO)
 
-    os.makedirs(output_path, exist_ok=True)
+    try:
+        logging.info(f"Starting processing for {args.input}")
+        total_files = 0
+        skipped_files = 0
 
-    schema_mapping = {
-        "EN": ENSchema,
-        "FA": FASchema,
-    }
+        with zipfile.ZipFile(args.input, 'r') as zip_ref:
+            for file_name in zip_ref.namelist():
+                if not file_name.endswith(".dat"):
+                    logging.info(f"Skipping unsupported file: {file_name}")
+                    skipped_files += 1
+                    continue
 
-    process_zip_stream(input_zip, output_path, output_type, schema_mapping)
+                total_files += 1
+                with zip_ref.open(file_name) as input_stream:
+                    process_dat_file(file_name, input_stream, args.output, args.output_file_format)
 
-if __name__ == "__main__":
-    main()
+        print_summary(total_files, skipped_files)
+        logging.info("Processing completed successfully.")
+    except Exception as e:
+        logging.error(f"Fatal error: {e}")

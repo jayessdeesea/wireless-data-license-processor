@@ -2,3 +2,4 @@ pydantic
 pytest
 pyarrow
 pandas
+amazon.ion

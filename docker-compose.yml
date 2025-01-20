@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  wdlp:
+    build:
+      context: .
+    container_name: wdlp_container
+    volumes:
+      - ./data:/data  # Mount the local data directory to the container
+    command: >
+      python wdlp/main.py
+      --input-dat-file /data/sample.dat
+      --output /data/output
+      --output-file-format jsonl

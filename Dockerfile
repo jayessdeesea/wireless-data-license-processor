@@ -1,21 +1,14 @@
-FROM docker.io/ubuntu:latest
+FROM python:3.9-slim
 
-ENV DEBIAN_FRONTEND=noninteractive
-
-RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
-    unzip \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
+# Set the working directory
 WORKDIR /app
 
-COPY requirements.txt /app/requirements.txt
+# Copy requirements and install dependencies
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
-RUN pip3 install --no-cache-dir -r /app/requirements.txt
+# Copy the entire project
+COPY . .
 
-COPY . /app
-
-ENTRYPOINT [ "sleep", "forever" ]
-
+# Define the default command
+CMD ["python", "wdlp/main.py"]

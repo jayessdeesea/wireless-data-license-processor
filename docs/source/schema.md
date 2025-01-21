@@ -1,20 +1,5 @@
-# Objective
+# Generate
 
-Develop a Python tool to process `.dat` files and ZIP archives containing `.dat` files, transforming them into specified
-output formats (JSONL, Parquet, Ion, and CSV) while validating against predefined schemas (AM and EN).
-
-# Ground Rules
-
-When reading any EBNF grammar in this document:
-
-- Each rule must be expanded mechanically, one at a time.
-
-When writing code
-
-- Separate each file so it is easy to copy/paste
-- Include import statements
-
-# Part 1: Generate Pydantic Data Objects
 
 ## AM Record Schema
 
@@ -84,160 +69,18 @@ When writing code
 
 ### Task 1. Generate Pydantic data object for provided schemas 
 
+Build Pydantic data objects using the provided Public Access Database Definitions
+
+- validate constraints (e.g., string length, numeric ranges, and regular expressions)
+- Each Pydantic data object
+    - Defines attribute name and type
+    - Makes attributes `Optional`
+    - Uses validation constraints (`min_length`, `max_length`, `pattern`, `description`) where possible
+    - Makes `description` validation constraint value comprehensive for context and clarity
+    - Uses `pattern` validation constraint instead of the deprecated `regex` validation constraints
+    - Uses native Python dates for date types rather than strings
+- Define the schema classes directly instead of encapsulating them in functions.
+    - On-the-fly generation or isolation of the schema definitions is not required
+
 Place the schema record types in src/schema/schemas.py
-
-### Task 2. 
-
-# Part 1: Build the .dat file Finite State Machine
-
-## .dat file format
-
-```text
-untyped-record = ( untyped-field, "|" )+, eol ;
-untyped-field = untyped-field-byte+ ;
-untyped-field-byte = ? any character except "|" ? ;
-
-eol = nl | cr, nl ;
-nl = "\n" ;
-cr = "\r" ;
-```
-
-## Constraints
-
-### Length Limit Constraints
-
-- **untyped-field**:
-    - Minimum length: 0 bytes (empty field).
-    - Maximum length: 1024 bytes.
-
-### Size Limit Constraints
-
-- **untyped-record**:
-    - Minimum number of untyped-fields: 0 (empty record).
-    - Maximum number of untyped-fields: 256.
-
-### Additional Constraints
-
-It is invalid when a stream ends in a partial record.
-
-## Key Considerations
-
-- A `.dat` file can be empty (no records).
-- An **untyped-record** can have no fields.
-- an untyped-record will always end with a pipe(|) immediately followed by a NL or a CR NL.
-
-## Valid Samples
-
-1. Empty untyped-fields
-
-```text
-|||||
-```
-
-2. Basic records with multiple fields
-
-```text
-field1|field2|field3|field4|\n
-```
-
-3. Multiple records
-
-```text
-a|b|c|d|
-1|2|3|4|
-```
-
-4. single record where `field-value`s have newlines
-
-```text
-\nab|c\nd|ef\n|
-```
-
-## Invalid Samples
-
-1. Unterminated record
-
-```text
-field1
-```
-
-## Tasks
-
-### Task 1: Generate a "Sequential Component Analysis" from the Grammar
-
-- Create a detailed analysis of the components in the grammar and their relationships.
-- Ensure the output can be copied and pasted into a monospace text document for clarity.
-
-### Task 2: Generate a "Rule to State Mapping" from the Grammar
-
-- Map each grammar rule to a corresponding state in the finite state machine.
-- Include transitions and substate details where applicable.
-- Ensure the output is suitable for use in a monospace text document.
-
-### Task 3: Generate a "State Transition Table" from the Grammar
-
-- Define a table representing all possible transitions between states based on input.
-- Include constraints and edge cases in the table.
-- Ensure the output format is monospace text document-friendly.
-- Add additional states to handle CR
-    - Use the _CR suffix for states where you are waiting for a NL after a CR
-
-# Part 2: Build a Finite State Machine (FSM)
-
-Build a FSM to process a stream of .dat files
-
-* Start with the state machine in the `State Transition Table`
-* Add states for multiple records
-* Implement using the State pattern
-
-## Validation, Error Handling, and Reporting
-
-Enforce grammar and other constraints (e.g, length, size)
-
-When a constraint check fails
-
-* Set the FSM in an unrecoverable and halted ERROR state.
-* raise an Error with debugging context, including
-    * The stream line number
-    * What the error was. For example, an invalid character
-    * What was expected (like untyped-field-char) and what was received. Use ascii if the value is whitespace or
-      unprintable
-* Further input into the FSM will result in the same raised Error
-
-## Tasks
-
-### Task 1: Build the Context FSM classes
-
-Put them in dat/fsm/context.py
-
-### Task 2: Build the State FSM classes
-
-Put them in dat/fsm/state.py
-
-# Part 3: Build the Parsers
-
-## UntypedRecord
-
-UntypedRecord class
-
-* has a list of strings that represent a untyped-field
-
-## Common Requirements
-
-* Parsers will convert a .dat stream into `UntypedRecord`s
-* Use the contex class to drive the state machine
-
-## Tasks
-
-### Task 1: Build the UntypedRecord
-
-Put it in dat/untyped_record.py
-
-### Task 2: Build a DatPullParser
-
-* Accepts a stream
-* methods are next and hasNext
-
-Put it in dat/parser/pull_parser.py
-
 

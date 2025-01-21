@@ -1,127 +1,52 @@
-# Wdlp: .dat File Processor
+# Wireless Data License Processor
 
 ## Overview
-Wdlp is a Python-based tool for processing `.dat` files, transforming them into various formats (JSONL, Parquet, Ion, CSV), and validating them against predefined schemas.
 
-## Features
-- Supports multiple input sources:
-  - `.dat` files
-  - ZIP archives containing `.dat` files
-- Outputs supported formats:
-  - JSONL
-  - Parquet
-  - Amazon Ion (text format)
-  - CSV
-- Schema validation with detailed error reporting
+"wdlp" is a Python-based tool for processing `.dat` files, transforming them into various formats (JSONL, Parquet, Ion,
+CSV), and validating them against predefined schemas.
 
-## Installation
+## Core Components
 
-### Prerequisites
-- Python 3.9+
-- pip
+### 1. [Schema](docs/source/schema.md)
 
-### Using pip
-1. Clone the repository:
-   ```bash
-   git clone <repository_url>
-   cd wdlp
-   ```
+- Pydantic representations of the provided Public Access Database Definitions
 
-2. Install the dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+### 2. [Producer](docs/source/producer.md)
 
-3. Install the package:
-   ```bash
-   python setup.py install
-   ```
+- Pull Parser for reading .dat streams. Returns a record object
 
-### Using Docker
-1. Build the Docker image:
-   ```bash
-   docker build -t wdlp .
-   ```
+### 3. [Mapper](docs/source/mapper.md)
 
-2. Run the container:
-   ```bash
-   docker run -v $(pwd):/data wdlp --input-dat-file /data/sample.dat --output /data/output
-   ```
+- Map record object into Pydantic record.
 
-## Usage
+### 4. [Consumer](docs/source/consumer.md)
 
-### Command-Line Interface
-Run the tool using the `wdlp` command:
+- A callable abstraction accepting a Pydantic record and writing to a variety of file formats, including JSONL,
+  Parquet, Ion, and CSV.
 
-```bash
-wdlp [OPTIONS]
-```
+### 5. [Main](docs/source/main.md)
 
-### Options
-- `--input-zip-archive`:
-  - Path to a ZIP archive containing `.dat` files. Can be specified multiple times.
-- `--input-dat-file`:
-  - Path to a `.dat` file. Can be specified multiple times.
-- `--output`:
-  - Directory for output files. Default: `output`.
-- `--output-file-format`:
-  - Output file format. Choices: `jsonl`, `parquet`, `ion`, `csv`. Default: `jsonl`.
+- A CLI for accepting user instructions (input location, output location, etc..)
+- Reads .dat files either on disk or in a zip archive and transforms into records
+- Maps records into specific record types
+- Writes to specified file format
 
-### Example
-To process a single `.dat` file and output JSONL:
-```bash
-wdlp --input-dat-file sample.dat --output output --output-file-format jsonl
-```
+## Additional Artifacts
 
-To process a ZIP archive and output Parquet:
-```bash
-wdlp --input-zip-archive samples.zip --output output --output-file-format parquet
-```
+### Docker Image and Docker Compose
 
-## Development
+Enables "wdlp" tool use without installing python locally.
 
-### Running Tests
-Install `pytest`:
-```bash
-pip install pytest
-```
+## Technical Requirements
 
-Run the tests:
-```bash
-pytest
-```
-
-### Project Structure
-```plaintext
-project_root/
-├── wdlp/
-│   ├── __init__.py
-│   ├── main.py
-│   ├── schema/
-│   │   ├── __init__.py
-│   │   ├── schemas.py
-│   │   └── untyped_utils.py
-│   ├── reader/
-│   │   ├── __init__.py
-│   │   └── readers.py
-│   ├── writer/
-│   │   ├── __init__.py
-│   │   └── writers.py
-├── tests/
-│   ├── __init__.py
-│   ├── schema/
-│   │   ├── __init__.py
-│   │   └── test_schemas.py
-│   ├── reader/
-│   │   ├── __init__.py
-│   │   └── test_readers.py
-├── data/
-│   └── (sample .dat and test data files)
-├── Dockerfile
-├── README.md
-├── requirements.txt
-├── setup.py
-```
-
-## License
-This project is licensed under the MIT License. See `LICENSE` for more details.
+* Follow idiomatic Python conventions (e.g., PEP 8, the official Python style guide)
+* Code is modular and documented
+* Use the following libraries
+    * Pydantic v2: for schema validation and field-specific transformations.
+    * amazon.ion: for Ion file format
+    * pandas and pyarrow: for Parquet format
+    * tempfile: for temporary files
+* Do not use deprecated features. Here are some examples:
+    * Replace `__fields__` with `model_fields`.
+    * Replace `dict` with `model_dump`.
+    * Replace `parse_obj` with `model_validate`.

@@ -1,63 +1,164 @@
-# CLI Tool Integration
+# Main Component
 
-## Objective
+## Overview
 
-Provide a command-line interface to tie all modules together.
+The Main component provides a command-line interface for processing FCC Wireless License Database files. It coordinates the interaction between all components (Producer, Mapper, Consumer) and provides comprehensive logging and error reporting.
 
-## CLI
+## Command Line Interface
 
-    - -h or --help: Display usage instructions.
-    - -v or --version: Show the program version.
-    - -i or --input: Specify the path to the ZIP archive. Default: l_amat.zip.
-    - -o or --output: Specify the output directory. Default: output. Create the directory if it does not exist.
-    - -f or --file-format: Specify the output file format. Default: jsonl. Possible values are jsonl, parquet,
-      ion, and
-      csv
+### Usage
+```bash
+wdlp [-h] [-v] -i INPUT -o OUTPUT [-f {jsonl,parquet,ion,csv}]
+```
 
-## Business Logic
+### Arguments
+| Argument | Description | Default |
+|----------|-------------|---------|
+| -h, --help | Show help message | |
+| -v, --version | Show program version | |
+| -i, --input | Input ZIP archive path | l_amat.zip |
+| -o, --output | Output directory path | output/ |
+| -f, --format | Output format | jsonl |
 
-- Process CLI
-- Open ZIP archive
-  - Halt with a detailed error message for missing or unreadable ZIP Archive
-  - Log the name of the ZIP archive
-  - For each ZIP Entry
-    - Log and skip if the Zip entry does not end in .dat
-    - Use the 
-- Log the following:
-    * ZIP archive path before opening.
-    * Each ZIP entry names and action taken (e.g., reasons for skipping files such as skipping file abcd.txt because it
-      does not end in .dat)
-* Handle Zip Archive file by
-    * Skipping non-.dat file entries
-    * Skipping .dat files with unknown schemas
-    * Opening the dat stream from the zip entry stream. Use in-memory file-like objects for ZIP archive processing
-      instead of temporary files.
-    * Deleting output files that match the schema and format of the current run and log when doing so
-    * Create a DatToUntypedIterator to transform the .dat input stream into a untyped record iterable
-    * Create a UntypedRecordToTypedRecordMapper to transform the untyped record into a typed record
-    * Create an appropriate writer (e.g., CSVWriter) with the appropriate path (e.g., AM.csv)
-    * Iterate through the untyped records, map them to typed records, and write them to disk
-* Print a plain text table with
-    * Total schema types processed.
-    * Total records validated per schema.
-    * Total processing time.
+### Output Formats
+- jsonl: JSON Lines format
+- parquet: Apache Parquet format
+- ion: Amazon Ion text format
+- csv: Comma-Separated Values
 
-Place the CLI logic in project_root/wdlp/main.py.
+## Processing Flow
 
+### 1. Initialization
+```python
+def main():
+    # Parse command line arguments
+    args = parse_args()
+    
+    # Configure logging
+    setup_logging()
+    
+    # Create output directory
+    os.makedirs(args.output, exist_ok=True)
+```
 
-* Parse arguments and pass them to the appropriate modules
-* Handle errors (e.g., invalid file paths, schema validation errors) by displaying debugging context and halting
-  processing
+### 2. ZIP Archive Processing
+```python
+def process_zip(zip_path: str, output_dir: str, format: str):
+    """Process all .dat files in ZIP archive"""
+    with zipfile.ZipFile(zip_path, 'r') as zf:
+        for entry in zf.namelist():
+            if not entry.endswith('.dat'):
+                logger.info(f"Skipping non-.dat file: {entry}")
+                continue
+            
+            process_dat_file(zf.open(entry), entry, output_dir, format)
+```
 
-Specific Requirements:
+### 3. Record Processing
+```python
+def process_dat_file(stream: IO, filename: str, output_dir: str, format: str):
+    """Process a single .dat file"""
+    # Determine schema from filename
+    schema_type = os.path.splitext(os.path.basename(filename))[0].upper()
+    
+    # Create components
+    parser = PullParser(stream)
+    mapper = MapperFactory.create_mapper(schema_type)
+    writer = WriterFactory.create_writer(format, output_path)
+    
+    # Process records
+    for record in parser:
+        typed_record = mapper(record)
+        writer.write(typed_record.model_dump())
+```
 
-* The .dat file name prefix determines the schema for the file. E.g., AM.dat uses the AM schema
+## Error Handling
 
----
+### Input Validation
+```python
+def validate_input(args):
+    """Validate command line arguments"""
+    if not os.path.exists(args.input):
+        raise FileNotFoundError(f"Input file not found: {args.input}")
+        
+    if not zipfile.is_zipfile(args.input):
+        raise ValueError(f"Input must be a ZIP archive: {args.input}")
+```
 
+### Processing Errors
+- ZIP file errors (missing, corrupt)
+- Schema validation errors
+- File format errors
+- I/O errors
 
-Place AbstractWriter and extended classes in wdlp/writer/writers.py
+## Logging
 
-### Create CLI and Main Method
+### Configuration
+```python
+def setup_logging():
+    """Configure logging format and level"""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+```
 
+### Log Events
+- ZIP archive processing start/end
+- File processing status
+- Record counts
+- Errors and warnings
+- Performance metrics
 
+## Performance Reporting
+
+### Statistics
+```python
+class ProcessingStats:
+    def __init__(self):
+        self.schema_counts = defaultdict(int)
+        self.start_time = time.time()
+    
+    def print_report(self):
+        """Print processing statistics"""
+        elapsed = time.time() - self.start_time
+        print("\nProcessing Summary:")
+        print(f"Total time: {elapsed:.2f} seconds")
+        for schema, count in self.schema_counts.items():
+            print(f"{schema} records: {count}")
+```
+
+## Usage Example
+
+```bash
+# Process all .dat files in archive
+wdlp --input l_amat.zip --output processed/ --format parquet
+
+# Processing output
+Processing l_amat.zip...
+Found AM.dat - processing Amateur License records
+Found EN.dat - processing Entity records
+Skipping README.txt - not a .dat file
+
+Processing Summary:
+Total time: 5.23 seconds
+AM records: 1234
+EN records: 5678
+```
+
+## Extension
+
+To add new functionality:
+
+1. Add new command line arguments
+2. Implement new processing logic
+3. Update error handling
+4. Add appropriate logging
+5. Update performance metrics
+
+Example:
+```python
+parser.add_argument('--validate-only', 
+                   action='store_true',
+                   help='Validate records without writing output')
+```

@@ -1,50 +1,148 @@
-# Writer Module
+# Consumer Component
 
-## Objective
+## Overview
 
-## 
+The Consumer component is responsible for writing validated records to output files in various formats. It implements a factory pattern for writer creation and provides consistent handling of data across different output formats.
 
-Consumer
-- Method
-  - accept()
+## Architecture
 
+### Factory Pattern
 
-ConsumerFactory
-- Method
-  - create(output: Path) -> Consumer
+```python
+class ConsumerFactory:
+    """Factory for creating format-specific consumers"""
+    @staticmethod
+    def create(output: Path) -> Consumer:
+        """Create a consumer for the given output path"""
+        pass
 
-ConsumerFactoryProvider
-- Method
-  - create(file_format: str) -> ConsumerFactory
+class ConsumerFactoryProvider:
+    """Provider for format-specific factory instances"""
+    @staticmethod
+    def create(file_format: str) -> ConsumerFactory:
+        """Create a factory for the specified format"""
+        pass
+```
 
+### Abstract Writer
 
+```python
+class AbstractWriter:
+    """Base class for all format-specific writers"""
+    def __init__(self, path: Path):
+        """Initialize with output path"""
+        self.final_path = path
+        self._temp_file = None
 
-# Writer Module
+    def __enter__(self):
+        """Context manager entry - create temporary file"""
+        pass
 
-* Support the following file formats
-    * JSONL: Each row is serialized as a single line of JSON
-    * Parquet: Rows are sorted in an efficient, columnar format
-    * Amazon Ion (text format only): Each row is serialized as a single line of Ion text
-    * Comma Separated Value (CSV): Each row represents a record, columns are separated by a comma
-* Handle missing fields as:
-    * null for formats supporting nulls (JSONL, Ion)
-    * Empty string ("") for formats not supporting nulls (Parquet, CSV)
-* Dates are formatted as:
-    * ISO 8601 (yyyy-mm-dd) for formats without native date support.
-    * Native date types for formats that support them (e.g., Parquet).
+    def write(self, record: dict):
+        """Write a single record"""
+        pass
 
-Implementation
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - handle file finalization"""
+        if exc_type is None:
+            # Success - move temp file to final location
+            pass
+        else:
+            # Error - delete temp file
+            pass
+```
 
-* Implement an AbstractWriter
-    * Accepts a path to the final file destination.
-    * Is a context manager. Will manage the lifetime of a temporary file in the same directory as the final file
-      destination
-    * A write method for writing a single record to the temporary file
-    * on exit
-        * Will close the temporary file
-        * If processing was successful, move temporary file to final location. Otherwise delete it.
-* Extend AbstractWriter for each format (JSONLWriter, ParquetWriter, etc.)
-* Write a separate output file for each table type:
-    * Example: For EN.dat in JSONL format, write to EN.jsonl.
-* The IonWriter should emit Ion text, not Ion binary
-* Remember to import the tempfile module as necessary
+## Supported Formats
+
+### JSONL (JSON Lines)
+- Each record serialized as a single line of JSON
+- Full support for null values
+- Dates formatted as ISO 8601 strings
+- Example output:
+  ```jsonl
+  {"field1": "value1", "field2": null}
+  {"field1": "value2", "field2": "2024-02-15"}
+  ```
+
+### Parquet
+- Columnar storage format
+- Native support for dates and complex types
+- Efficient compression
+- Schema enforcement
+- Example schema:
+  ```
+  message Record {
+    required binary field1 (STRING);
+    optional int64 field2;
+    optional int32 date_field (DATE);
+  }
+  ```
+
+### Ion (Text Format)
+- Amazon Ion text format (not binary)
+- Full support for null values
+- Rich type system
+- Example output:
+  ```ion
+  {field1:"value1", field2:null}
+  {field1:"value2", field2:2024-02-15T}
+  ```
+
+### CSV
+- Simple text format
+- Empty strings for null values
+- Dates as ISO 8601 strings
+- Example output:
+  ```csv
+  field1,field2,date_field
+  value1,,
+  value2,data,2024-02-15
+  ```
+
+## Implementation Details
+
+### File Handling
+- Uses temporary files during writing
+- Atomic file operations for reliability
+- Cleanup on errors
+- One output file per record type
+
+### Data Type Handling
+- Missing Fields:
+  - JSONL/Ion: `null`
+  - Parquet/CSV: Empty string (`""`)
+- Dates:
+  - With native support (Parquet): Native date type
+  - Without native support: ISO 8601 format (`yyyy-mm-dd`)
+
+### Error Handling
+- Temporary file cleanup on errors
+- Atomic file operations
+- Detailed error messages
+
+## Usage Example
+
+```python
+# Create a writer for JSONL format
+with JSONLWriter("output/AM.jsonl") as writer:
+    # Write records
+    writer.write({"field1": "value1", "field2": None})
+    writer.write({"field1": "value2", "field2": "2024-02-15"})
+```
+
+## Extension
+
+To add support for a new format:
+
+1. Create a new writer class extending AbstractWriter
+2. Implement format-specific serialization
+3. Add format to ConsumerFactoryProvider
+4. Update format validation in CLI
+
+Example:
+```python
+class NewFormatWriter(AbstractWriter):
+    def write(self, record: dict):
+        # Format-specific implementation
+        pass
+```

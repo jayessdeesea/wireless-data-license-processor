@@ -1,86 +1,162 @@
-# Generate
+# Schema Component
 
+## Overview
 
-## AM Record Schema
+The Schema component provides Pydantic models that represent and validate FCC Wireless License Database records. These models are based on the [Public Access Database Definitions](https://www.fcc.gov/sites/default/files/public_access_database_definitions_20240215.pdf) and implement comprehensive validation rules.
 
-* Use the table immediately following this for the AM Record Schema
-* If the table does not exist, extract the schema from the provided `Public Access Database Definitions`
+## Record Types
 
-| Position | Data Element                | Definition                        | Data Type    |
-|----------|-----------------------------|-----------------------------------|--------------|
-| 1        | Record Type [AM]            | Record type                       | char(2)      |
-| 2        | Unique System Identifier    | Unique identifier for the system  | numeric(9,0) |
-| 3        | ULS File Number             | ULS file number                   | char(14)     |
-| 4        | EBF Number                  | EBF number                        | varchar(30)  |
-| 5        | Call Sign                   | Call sign                         | char(10)     |
-| 6        | Operator Class              | Operator class                    | char(1)      |
-| 7        | Group Code                  | Group code                        | char(1)      |
-| 8        | Region Code                 | Region code                       | tinyint      |
-| 9        | Trustee Call Sign           | Trustee call sign                 | char(10)     |
-| 10       | Trustee Indicator           | Trustee indicator                 | char(1)      |
-| 11       | Physician Certification     | Physician certification           | char(1)      |
-| 12       | VE Signature                | Volunteer Examiner (VE) signature | char(1)      |
-| 13       | Systematic Call Sign Change | Systematic call sign change       | char(1)      |
-| 14       | Vanity Call Sign Change     | Vanity call sign change           | char(1)      |
-| 15       | Vanity Relationship         | Vanity relationship               | char(12)     |
-| 16       | Previous Call Sign          | Previous call sign                | char(10)     |
-| 17       | Previous Operator Class     | Previous operator class           | char(1)      |
-| 18       | Trustee Name                | Name of trustee                   | varchar(50)  |
+### Amateur License Record (AM)
 
-## EN Record Schema
+```python
+class AMRecord(BaseModel):
+    """Amateur License record schema"""
+    record_type: Optional[str] = Field(
+        None,
+        min_length=2,
+        max_length=2,
+        pattern="^AM$",
+        description="Record type identifier, must be 'AM'"
+    )
+    system_id: Optional[int] = Field(
+        None,
+        ge=0,
+        le=999999999,
+        description="Unique system identifier (0-999999999)"
+    )
+    # ... additional fields
+```
 
-* Use the table immediately following this for the EN Record Schema
-* If the table does not exist, extract the schema from the provided `Public Access Database Definitions`
+Full field list (18 fields):
+| Position | Field Name | Type | Constraints | Description |
+|----------|------------|------|-------------|-------------|
+| 1 | record_type | str | char(2) | Record type [AM] |
+| 2 | system_id | int | numeric(9,0) | Unique system identifier |
+| 3 | uls_file_number | str | char(14) | ULS file number |
+| 4 | ebf_number | str | varchar(30) | EBF number |
+| 5 | call_sign | str | char(10) | Call sign |
+| 6 | operator_class | str | char(1) | Operator class |
+| 7 | group_code | str | char(1) | Group code |
+| 8 | region_code | int | tinyint | Region code |
+| 9 | trustee_call_sign | str | char(10) | Trustee call sign |
+| 10 | trustee_indicator | str | char(1) | Trustee indicator |
+| 11 | physician_certification | str | char(1) | Physician certification |
+| 12 | ve_signature | str | char(1) | VE signature |
+| 13 | systematic_call_sign_change | str | char(1) | Systematic call sign change |
+| 14 | vanity_call_sign_change | str | char(1) | Vanity call sign change |
+| 15 | vanity_relationship | str | char(12) | Vanity relationship |
+| 16 | previous_call_sign | str | char(10) | Previous call sign |
+| 17 | previous_operator_class | str | char(1) | Previous operator class |
+| 18 | trustee_name | str | varchar(50) | Trustee name |
 
-| Position | Data Element                    | Definition                       | Data Type    |
-|----------|---------------------------------|----------------------------------|--------------|
-| 1        | Record Type [EN]                | Record type                      | char(2)      |
-| 2        | Unique System Identifier        | Unique identifier for the system | numeric(9,0) |
-| 3        | ULS File Number                 | ULS file number                  | char(14)     |
-| 4        | EBF Number                      | EBF number                       | varchar(30)  |
-| 5        | Call Sign                       | Call sign                        | char(10)     |
-| 6        | Entity Type                     | Type of entity                   | char(2)      |
-| 7        | Licensee ID                     | Licensee identifier              | char(9)      |
-| 8        | Entity Name                     | Name of the entity               | varchar(200) |
-| 9        | First Name                      | First name of individual         | varchar(20)  |
-| 10       | MI                              | Middle initial                   | char(1)      |
-| 11       | Last Name                       | Last name                        | varchar(20)  |
-| 12       | Suffix                          | Name suffix                      | char(3)      |
-| 13       | Phone                           | Phone number                     | char(10)     |
-| 14       | Fax                             | Fax number                       | char(10)     |
-| 15       | Email                           | Email address                    | varchar(50)  |
-| 16       | Street Address                  | Street address                   | varchar(60)  |
-| 17       | City                            | City                             | varchar(20)  |
-| 18       | State                           | State                            | char(2)      |
-| 19       | Zip Code                        | Zip code                         | char(9)      |
-| 20       | PO Box                          | PO Box                           | varchar(20)  |
-| 21       | Attention Line                  | Attention line                   | varchar(35)  |
-| 22       | SGIN                            | Signature identifier             | char(3)      |
-| 23       | FCC Registration Number (FRN)   | FCC registration number          | char(10)     |
-| 24       | Applicant Type Code             | Applicant type code              | char(1)      |
-| 25       | Applicant Type Code Other       | Other applicant type code        | char(40)     |
-| 26       | Status Code                     | Status code                      | char(1)      |
-| 27       | Status Date                     | Status date                      | mm/dd/yyyy   |
-| 28       | 3.7 GHz License Type            | 3.7 GHz license type             | char(1)      |
-| 29       | Linked Unique System Identifier | Linked unique system identifier  | numeric(9,0) |
-| 30       | Linked Call Sign                | Linked call sign                 | char(10)     |
+### Entity Record (EN)
 
-## Tasks
+```python
+class ENRecord(BaseModel):
+    """Entity record schema"""
+    record_type: Optional[str] = Field(
+        None,
+        min_length=2,
+        max_length=2,
+        pattern="^EN$",
+        description="Record type identifier, must be 'EN'"
+    )
+    system_id: Optional[int] = Field(
+        None,
+        ge=0,
+        le=999999999,
+        description="Unique system identifier (0-999999999)"
+    )
+    # ... additional fields
+```
 
-### Task 1. Generate Pydantic data object for provided schemas 
+Full field list (30 fields):
+| Position | Field Name | Type | Constraints | Description |
+|----------|------------|------|-------------|-------------|
+| 1 | record_type | str | char(2) | Record type [EN] |
+| 2 | system_id | int | numeric(9,0) | Unique system identifier |
+| 3 | uls_file_number | str | char(14) | ULS file number |
+| 4 | ebf_number | str | varchar(30) | EBF number |
+| 5 | call_sign | str | char(10) | Call sign |
+| 6 | entity_type | str | char(2) | Entity type |
+| 7 | licensee_id | str | char(9) | Licensee identifier |
+| 8 | entity_name | str | varchar(200) | Entity name |
+| 9 | first_name | str | varchar(20) | First name |
+| 10 | mi | str | char(1) | Middle initial |
+| 11 | last_name | str | varchar(20) | Last name |
+| 12 | suffix | str | char(3) | Name suffix |
+| 13 | phone | str | char(10) | Phone number |
+| 14 | fax | str | char(10) | Fax number |
+| 15 | email | str | varchar(50) | Email address |
+| 16 | street_address | str | varchar(60) | Street address |
+| 17 | city | str | varchar(20) | City |
+| 18 | state | str | char(2) | State |
+| 19 | zip_code | str | char(9) | Zip code |
+| 20 | po_box | str | varchar(20) | PO Box |
+| 21 | attention_line | str | varchar(35) | Attention line |
+| 22 | sgin | str | char(3) | Signature identifier |
+| 23 | frn | str | char(10) | FCC Registration Number |
+| 24 | applicant_type_code | str | char(1) | Applicant type code |
+| 25 | applicant_type_code_other | str | char(40) | Other applicant type |
+| 26 | status_code | str | char(1) | Status code |
+| 27 | status_date | date | mm/dd/yyyy | Status date |
+| 28 | license_type | str | char(1) | 3.7 GHz license type |
+| 29 | linked_system_id | int | numeric(9,0) | Linked system identifier |
+| 30 | linked_call_sign | str | char(10) | Linked call sign |
 
-Build Pydantic data objects using the provided Public Access Database Definitions
+## Validation Rules
 
-- validate constraints (e.g., string length, numeric ranges, and regular expressions)
-- Each Pydantic data object
-    - Defines attribute name and type
-    - Makes attributes `Optional`
-    - Uses validation constraints (`min_length`, `max_length`, `pattern`, `description`) where possible
-    - Makes `description` validation constraint value comprehensive for context and clarity
-    - Uses `pattern` validation constraint instead of the deprecated `regex` validation constraints
-    - Uses native Python dates for date types rather than strings
-- Define the schema classes directly instead of encapsulating them in functions.
-    - On-the-fly generation or isolation of the schema definitions is not required
+### String Fields
+- Fixed-length (char): Exact length required
+- Variable-length (varchar): Maximum length enforced
+- Pattern matching where applicable (e.g., record types)
+- All fields are optional to handle partial records
 
-Place the schema record types in src/schema/schemas.py
+### Numeric Fields
+- Integer ranges enforced
+- Type conversion from string input
+- Validation of decimal places
 
+### Date Fields
+- Parsed from mm/dd/yyyy format
+- Converted to native Python date objects
+- Range validation where applicable
+
+## Usage Example
+
+```python
+try:
+    # Create and validate an Amateur License record
+    am_record = AMRecord(
+        record_type="AM",
+        system_id=123456789,
+        call_sign="W1AW",
+        operator_class="A"
+    )
+    print(f"Valid record: {am_record.model_dump()}")
+except ValidationError as e:
+    print(f"Validation failed: {e}")
+```
+
+## Extension
+
+To add support for new record types:
+
+1. Create new Pydantic model class
+2. Define fields with appropriate types and constraints
+3. Add validation rules as needed
+4. Update schema documentation
+
+Example:
+```python
+class NewRecord(BaseModel):
+    """New record type schema"""
+    record_type: Optional[str] = Field(
+        None,
+        min_length=2,
+        max_length=2,
+        pattern="^XX$",
+        description="Record type identifier, must be 'XX'"
+    )
+    # Additional fields...
+```

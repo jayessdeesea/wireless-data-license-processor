@@ -1,198 +1,182 @@
-# .dat stream Pull Parser 
+# Producer Component
 
-## Objective
+## Overview
 
-Build a Python Pull Parser for the .dat file format.
+The Producer component implements a pull parser for reading FCC Wireless License Database `.dat` files. It uses a finite state machine (FSM) to ensure robust parsing and validation of the input format.
 
-## .dat file format
+## .dat File Format Specification
 
-```text
+The format is defined by the following EBNF grammar:
+
+```ebnf
 dat-file      = record*, EOF ; 
 record        = field*, end-of-record ;
 field         = field-value, end-of-field ;
-
 field-value   = field-byte* ;
 end-of-field  = "|" ;
 field-byte    = ? any character except end-of-field ? ;
-
 end-of-record = "\n" | ("\r", "\n") ;
 ```
 
-## Constraints
+### Format Constraints
 
-### Length Constraints
+1. Field Constraints:
+   - Minimum length: 0 bytes (empty field)
+   - Maximum length: 1024 bytes
+   - Cannot contain the field separator (|)
 
-Field:
-    - Minimum length: 0 bytes (empty field).
-    - Maximum length: 1024 bytes.
+2. Record Constraints:
+   - Minimum fields: 1
+   - Maximum fields: 256
+   - Must end with a newline
+   - Line number tracking required
 
-### Size Limit Constraints
+## Implementation
 
-Record:
-    - Minimum number of fields: 1.
-    - Maximum number of fields: 256.
+### Record Class
 
-## Additional Requirements
+```python
+class Record:
+    """Represents a single record from a .dat file"""
+    def __init__(self, line: int, fields: List[str]):
+        self.line = line      # Line number where record starts
+        self.fields = fields  # List of field values
 
-Track the line where the record starts.
+    def __str__(self):
+        """String representation for debugging"""
+        return f"Record(line={self.line}, fields={self.fields})"
+```
+
+### Finite State Machine
+
+The parser uses a state machine to track parsing progress:
+
+```python
+class ParserState:
+    """Base class for parser states"""
+    def process_char(self, char: str, context: 'ParserContext') -> 'ParserState':
+        """Process a single character and return next state"""
+        pass
+
+class StartState(ParserState):
+    """Initial state, expecting field content or end-of-field"""
+    pass
+
+class FieldState(ParserState):
+    """Processing field content"""
+    pass
+
+class EndOfFieldState(ParserState):
+    """Found field separator, expecting next field or end-of-record"""
+    pass
+
+class ErrorState(ParserState):
+    """Terminal state for parsing errors"""
+    def __init__(self, line: int, expected: str, received: str):
+        self.line = line
+        self.expected = expected
+        self.received = received
+```
+
+### Pull Parser
+
+```python
+class PullParser:
+    """Iterator-based parser for .dat files"""
+    def __init__(self, input_stream: IO):
+        self.stream = input_stream
+        self.fsm = FiniteStateMachine()
+        self.current_line = 1
+        self.error = None
+
+    def __iter__(self):
+        return self
+
+    def __next__(self) -> Record:
+        """Get next record or raise StopIteration/ParseError"""
+        if self.error:
+            raise self.error
+
+        try:
+            return self._parse_next_record()
+        except ParseError as e:
+            self.error = e
+            raise
+```
+
+## Error Handling
+
+The parser provides detailed error information:
+
+```python
+class ParseError(Exception):
+    def __init__(self, line: int, expected: str, received: str):
+        self.line = line
+        self.expected = expected
+        self.received = received
+        super().__init__(
+            f"Parse error at line {line}: "
+            f"expected {expected}, got {received}"
+        )
+```
+
+## Usage Example
+
+```python
+# Parse a .dat file
+with open('AM.dat', 'r') as f:
+    parser = PullParser(f)
+    try:
+        for record in parser:
+            # Process each record
+            print(f"Record at line {record.line}:")
+            for i, field in enumerate(record.fields):
+                print(f"  Field {i}: {field}")
+    except ParseError as e:
+        print(f"Error: {e}")
+```
 
 ## Test Cases
 
-- The input is in the .dat file format
-- The expected results is in the JSON file format
-
-### Test 1: Single Record Single Field Zero Length
-
-Input:
-
+### 1. Empty Field
 ```text
-|
+Input: |
+Expected: Record(line=1, fields=[""])
 ```
 
-Expected Results:
-
-```json
-[
-  [
-    ""
-  ]
-]
-```
-
-### Test 2: Single Record Single Field 
-
-Input:
-
+### 2. Single Field
 ```text
-value|
+Input: value|
+Expected: Record(line=1, fields=["value"])
 ```
 
-Expected Results:
-
-```json
-[
-  [
-    "value"
-  ]
-]
-```
-
-### Test 3: Single Record Multiple Fields 
-
-Input:
-
+### 3. Multiple Fields
 ```text
-value1|value2|
+Input: value1|value2|
+Expected: Record(line=1, fields=["value1", "value2"])
 ```
 
-Expected Results:
-
-```json
-[
-  [
-    "value1",
-    "value2"
-  ]
-]
-```
-
-### Test 4: Two Records
-
-Input:
-
+### 4. Multiple Records
 ```text
-value1|
+Input: value1|
 value2|
-```
-
-Expected Results:
-
-```json
-[
-  [
-    "value1"
-  ],
-  [
-    "value2"
-  ]
+Expected: [
+    Record(line=1, fields=["value1"]),
+    Record(line=2, fields=["value2"])
 ]
 ```
 
-### Test 5: Field with newline
-
-Input:
-
+### 5. Field with Newline
 ```text
-a
-b|
+Input: a\nb|
+Expected: Record(line=1, fields=["a\nb"])
 ```
 
-Expected Results:
+## Extension
 
-```json
-[
-  [
-    "a\nb"
-  ]
-]
-```
+To support new record formats:
 
-## Tasks
-
-### Task 1: Record class
-
-Build a Record class
-- Accepts 
-  - line (type int) the line number of the .dat stream
-  - fields (list of strings)
-- Methods
-  - `__str__(self)`
-
-Record lives in src/producer/record.py
-
-### Task 2: State Transition Table
-
-Build a state transition table
-- Base it off the .dat file format EBNF
-- error states are terminal.
-
-For each test case
-- Mechanically walk through the provided input using the generated optimized state transition table
-  - Verify you get the expected result
-  - Print pass if you get the expected result, fail otherwise
-
-
-Print the state transition table
-
-### Task 3: Finite State Machine
-
-Build a Python finite state machine
-- Use the state transition table above
-- Use the State design pattern
-- error is a terminal state and has the following context
-  - line number.
-  - what was expected (like field-char).
-  - what was received.
-- EOF (End Of File) when not at the start state is a framing error
- 
-Context and State objects live in src/producer/fsm.py
-
-### Task 4: Pull Parser
-
-The Pull Parser uses the Finite State Machine to transform a .dat file input stream into a stream of Records
-
-PullParser
-- Is an Iterator
-- Accepts
-  - an input stream representing a .dat file
-- Enforce grammar and other constraints (e.g., length, size)
-- If constraint check fails
-  - the pull parser is in a terminal error state
-  - raise an error with
-     - line number
-     - What was expected (like field-char)
-     - and what was received. Use ascii code if the character is unprintable
-  - further attempts to pull records from a parser will raise the same error 
-
-PullParser lives in src/producer/pull_parser.py
-
+1. Ensure format follows .dat file grammar
+2. Verify field and record constraints
+3. Add appropriate validation in parser
+4. Update error handling as needed

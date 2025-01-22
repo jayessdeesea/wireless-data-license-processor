@@ -9,13 +9,18 @@ The Producer component implements a pull parser for reading FCC Wireless License
 The format is defined by the following EBNF grammar:
 
 ```ebnf
-dat-file      = record*, EOF ; 
-record        = field*, end-of-record ;
-field         = field-value, end-of-field ;
-field-value   = field-byte* ;
-end-of-field  = "|" ;
-field-byte    = ? any character except end-of-field ? ;
-end-of-record = "\n" | ("\r", "\n") ;
+dat-file          = record*, EOF ;
+record            = field*, record-terminator ;
+field             = field-value, field-terminator ;
+field-value       = field-byte* ;
+field-terminator  = "|" ;
+field-byte        = ? any character except field-terminator ? ;
+record-terminator = LF | CRLF ;  # LF = "\n", CRLF = "\r\n"
+
+# Additional constraints:
+# 1. field-value length: 0-1024 bytes
+# 2. fields per record: 1-256
+# 3. field-byte: any UTF-8 character except "|"
 ```
 
 ### Format Constraints
@@ -138,38 +143,77 @@ with open('AM.dat', 'r') as f:
 
 ## Test Cases
 
-### 1. Empty Field
+### 1. Basic Cases
 ```text
+# Empty field
 Input: |
 Expected: Record(line=1, fields=[""])
-```
 
-### 2. Single Field
-```text
+# Single field
 Input: value|
 Expected: Record(line=1, fields=["value"])
-```
 
-### 3. Multiple Fields
-```text
+# Multiple fields
 Input: value1|value2|
 Expected: Record(line=1, fields=["value1", "value2"])
 ```
 
-### 4. Multiple Records
+### 2. Line Endings
 ```text
-Input: value1|
-value2|
+# LF ending
+Input: field|\n
+Expected: Record(line=1, fields=["field"])
+
+# CRLF ending
+Input: field|\r\n
+Expected: Record(line=1, fields=["field"])
+```
+
+### 3. Multiple Records
+```text
+# LF separated
+Input: value1|\nvalue2|
+Expected: [
+    Record(line=1, fields=["value1"]),
+    Record(line=2, fields=["value2"])
+]
+
+# CRLF separated
+Input: value1|\r\nvalue2|
 Expected: [
     Record(line=1, fields=["value1"]),
     Record(line=2, fields=["value2"])
 ]
 ```
 
-### 5. Field with Newline
+### 4. Edge Cases
 ```text
+# Field with embedded newline
 Input: a\nb|
 Expected: Record(line=1, fields=["a\nb"])
+
+# Maximum length field (1024 bytes)
+Input: "a" * 1024 + "|"
+Expected: Record(line=1, fields=["a"*1024])
+
+# Maximum fields per record (256)
+Input: "value|" * 256
+Expected: Record(line=1, fields=["value"]*256)
+```
+
+### 5. Error Cases
+```text
+# Field too long (>1024 bytes)
+Input: "a" * 1025 + "|"
+Expected: ParseError(line=1, "field length <= 1024", "1025")
+
+# Too many fields (>256)
+Input: "value|" * 257
+Expected: ParseError(line=1, "fields <= 256", "257")
+
+# Missing record terminator
+Input: "value"
+Expected: ParseError(line=1, "| or newline", "EOF")
 ```
 
 ## Extension

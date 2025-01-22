@@ -17,7 +17,7 @@ wdlp [-h] [-v] -i INPUT -o OUTPUT [-f {jsonl,parquet,ion,csv}]
 | -h, --help | Show help message | |
 | -v, --version | Show program version | |
 | -i, --input | Input ZIP archive path | l_amat.zip |
-| -o, --output | Output directory path | output/ |
+| -o, --output | Output directory path | output_dir/ |
 | -f, --format | Output format | jsonl |
 
 ### Output Formats
@@ -29,6 +29,7 @@ wdlp [-h] [-v] -i INPUT -o OUTPUT [-f {jsonl,parquet,ion,csv}]
 ## Processing Flow
 
 ### 1. Initialization
+
 ```python
 def main():
     # Parse command line arguments
@@ -55,6 +56,7 @@ def process_zip(zip_path: str, output_dir: str, format: str):
 ```
 
 ### 3. Record Processing
+
 ```python
 def process_dat_file(stream: IO, filename: str, output_dir: str, format: str):
     """Process a single .dat file"""
@@ -86,10 +88,24 @@ def validate_input(args):
 ```
 
 ### Processing Errors
-- ZIP file errors (missing, corrupt)
-- Schema validation errors
-- File format errors
-- I/O errors
+- ZIP file errors:
+  - Missing or corrupt ZIP archives
+  - Invalid ZIP file structure
+  - Permission issues
+- Schema validation errors:
+  - Unknown record types
+  - Invalid field values
+  - Missing required fields
+  - Data type mismatches
+- File format errors:
+  - Malformed .dat files
+  - Invalid record separators
+  - Encoding issues
+- I/O errors:
+  - Disk space issues
+  - Network failures for remote files
+  - Permission denied errors
+  - Resource busy errors
 
 ## Logging
 
@@ -138,6 +154,7 @@ wdlp --input l_amat.zip --output processed/ --format parquet
 Processing l_amat.zip...
 Found AM.dat - processing Amateur License records
 Found EN.dat - processing Entity records
+Skipping XX.dat - No schema for XX records 
 Skipping README.txt - not a .dat file
 
 Processing Summary:

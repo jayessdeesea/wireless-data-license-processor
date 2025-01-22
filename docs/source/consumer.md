@@ -108,17 +108,52 @@ class AbstractWriter:
 - One output file per record type
 
 ### Data Type Handling
-- Missing Fields:
-  - JSONL/Ion: `null`
-  - Parquet/CSV: Empty string (`""`)
-- Dates:
-  - With native support (Parquet): Native date type
-  - Without native support: ISO 8601 format (`yyyy-mm-dd`)
+
+#### Missing Fields
+- JSONL: `null`
+- Ion: `null`
+- Parquet: Format-specific null representation
+- CSV: Empty string (`""`)
+
+#### Dates
+- Input: mm/dd/yyyy (from schema)
+- Output:
+  - JSONL: ISO 8601 string (YYYY-MM-DD)
+  - Ion: Ion timestamp (YYYY-MM-DD)
+  - Parquet: Native date type
+  - CSV: ISO 8601 string (YYYY-MM-DD)
+
+#### Numbers
+- Input: String representation
+- Output:
+  - JSONL: Native JSON number
+  - Ion: Native Ion number
+  - Parquet: Native numeric type
+  - CSV: String representation
 
 ### Error Handling
-- Temporary file cleanup on errors
-- Atomic file operations
-- Detailed error messages
+
+#### File Operations
+- Temporary file cleanup on any error
+- Atomic file operations (rename only on success)
+- Proper file handle cleanup
+
+#### Data Errors
+- Invalid field values
+- Schema validation failures
+- Format-specific encoding issues
+
+#### System Errors
+- Disk space exhaustion
+- Permission issues
+- I/O errors
+- Resource limits
+
+#### Error Messages
+- Context-rich error descriptions
+- File operation state at failure
+- Validation failure details
+- System error information
 
 ## Usage Example
 

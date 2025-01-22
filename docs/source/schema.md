@@ -118,9 +118,15 @@ Full field list (30 fields):
 - Validation of decimal places
 
 ### Date Fields
-- Parsed from mm/dd/yyyy format
-- Converted to native Python date objects
-- Range validation where applicable
+- Input format: mm/dd/yyyy (as specified in database definition)
+- Internal storage: ISO 8601 (YYYY-MM-DD)
+- Output format varies by consumer:
+  - JSONL/CSV/Ion: ISO 8601 string
+  - Parquet: Native date type
+- Validation rules:
+  - Valid calendar dates only
+  - Year range: 1900-present
+  - Future dates rejected
 
 ## Usage Example
 

@@ -103,9 +103,10 @@ output_dir/
 
 ### 2. [Producer](docs/source/producer.md)
 - Pull Parser for reading `.dat` streams following a strict format:
-  - Records consist of fields separated by `|` characters
-  - Records are terminated by newlines (`\n` or `\r\n`)
-  - Fields can contain any character except the field separator
+  - Records consist of fields. 
+  - Fields are terminated by `|` character
+  - Records are terminated by end of line (`\n` or `\r\n`)
+  - Fields can contain any character except the field terminator
 - Enforces format constraints:
   - Field length: 0-1024 bytes
   - Records: 1-256 fields
@@ -151,7 +152,7 @@ output_dir/
   - `-h, --help`: Display usage instructions
   - `-v, --version`: Show program version
   - `-i, --input`: Input ZIP archive path (default: l_amat.zip)
-  - `-o, --output`: Output directory (default: output/)
+  - `-o, --output`: Output directory (default: output_dir/)
   - `-f, --file-format`: Output format (default: jsonl)
 - Robust error handling and logging:
   - ZIP archive validation and access

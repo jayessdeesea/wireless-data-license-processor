@@ -1,31 +1,18 @@
 # 1. What is this?
 
 This is a set of tools designed to process the Wireless Data License Database. The toolset includes scripts to validate
-and transform .dat files into structured formats such as JSONL, Parquet, and Amazon Ion.
+and transform .dat files into structured formats such as JSONL, Parquet, CSV, and Amazon Ion.
 
-All Python files in this toolset are generated using ChatGPT with instructions provided in a step-by-step manner.
+# 2. Helpful prompts
 
-# 2. Procedure
+Read the .md files and make them better. Here are some examples:
+- Restructure the core components so you can work on modular sections of code more effectively
+- Follow Python idomatic best practices
 
-* Load the public access database definitions pdf file
-* Load the INSTRUCTIONS.md file
-* Please write schemas.py
-* Please generate the main method
+Update the .md files so they are complete, unambiguous, and consistent
+- ask for help if you cannot resolve ambiguity
 
-# 2. Helpful prompts to GPT
-
-Tell me when the instructions are incomplete, ambiguous, and/or inconsistent.
-
-Please write a clean, comprehensive set of instructions I have provided you this session. Please write these instruction in a way a new ChatGPT instance could regenerate the code.
-
-
-To extract the schema
-
-```text
-extract the am schema into a markdown table
-```
-
-
+Update the code so it is consistent with the documentation
 
 # 3. See Also
 

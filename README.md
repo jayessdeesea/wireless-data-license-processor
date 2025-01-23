@@ -85,88 +85,122 @@ output_dir/
 - Ion (Amazon Ion)
 - CSV
 
+## Architecture Overview
+
+The Wireless Data License Processor (wdlp) follows a modular, pipeline-based architecture designed for efficient processing of FCC database files. The system is composed of five core components that work together to transform raw data into validated, structured output.
+
+```mermaid
+graph LR
+    A[ZIP Archive] --> B[Reader]
+    B --> C[Mapper]
+    C --> D[Writer]
+    E[Schema] --> C
+    F[Main] --> B & C & D
+```
+
+### Data Flow
+1. Input: ZIP archive containing `.dat` files
+2. Reader: Streams and parses raw records
+3. Mapper: Validates and transforms records using schemas
+4. Writer: Writes processed records to output files
+5. Main: Orchestrates the entire process
+
 ## Core Components
 
-### 1. [Schema](docs/source/schema.md)
-- Pydantic models representing FCC Public Access Database Definitions
-- Currently supports two record types:
-  - AM: Amateur License records (18 fields)
-  - EN: Entity records (30 fields)
-- Comprehensive validation including:
-  - Field data types (char, varchar, numeric, dates)
-  - String length constraints
-  - Numeric ranges
-  - Pattern matching
-- All fields are optional to handle partial records
-- Uses native Python dates for date fields
-- Detailed field descriptions for clarity and context
+Each component is designed to be modular, extensible, and focused on a single responsibility:
 
-### 2. [Producer](docs/source/producer.md)
-- Pull Parser for reading `.dat` streams following a strict format:
-  - Records consist of fields. 
-  - Fields are terminated by `|` character
-  - Records are terminated by end of line (`\n` or `\r\n`)
-  - Fields can contain any character except the field terminator
-- Enforces format constraints:
-  - Field length: 0-1024 bytes
-  - Records: 1-256 fields
-- Implements a finite state machine for robust parsing
-- Provides detailed error reporting:
-  - Line number tracking
-  - Expected vs received character information
-  - Constraint violation details
-- Returns Record objects with:
-  - Line number for traceability
-  - List of field values
-- Memory-efficient streaming implementation
+### 1. [Schema](docs/source/schema.md)
+The Schema component defines the data structure and validation rules:
+
+```python
+from pydantic import BaseModel, Field
+from typing import Optional
+
+class AMRecord(BaseModel):
+    """Amateur License record schema with comprehensive validation"""
+    record_type: Optional[str] = Field(
+        None, pattern="^AM$", description="Record type [AM]"
+    )
+    # Additional fields...
+```
+
+Key Features:
+- **Type Safety**: Pydantic models with strict type checking
+- **Validation Rules**: Comprehensive field constraints
+- **Documentation**: Detailed field descriptions
+- **Extensibility**: Easy addition of new record types
+
+### 2. [Reader](docs/source/reader.md)
+The Reader component implements a streaming parser:
+
+```python
+class PullParser:
+    """Memory-efficient parser for .dat files"""
+    def __iter__(self) -> Iterator[Record]:
+        """Stream records one at a time"""
+        pass
+```
+
+Key Features:
+- **Streaming**: Memory-efficient record processing
+- **Robust Parsing**: FSM-based implementation
+- **Error Handling**: Detailed error reporting
+- **Format Validation**: Strict adherence to .dat format
 
 ### 3. [Mapper](docs/source/mapper.md)
-- Factory pattern implementation for record type mapping:
-  - Abstract Mapper interface defining the mapping contract
-  - Concrete implementations for each record type (AMMapper, ENMapper)
-  - MapperFactory for creating appropriate mappers
-- Field-by-field validation with detailed error reporting:
-  - Full record context including line number
-  - Expected vs received value information
-  - Validation failure details
-- Transforms raw record fields into typed Pydantic objects
-- Supports extensibility for new record types
+The Mapper component transforms raw data into validated models:
 
-### 4. [Consumer](docs/source/consumer.md)
-- Abstract writer implementation with format-specific extensions:
-  - Context manager for safe file handling
-  - Temporary file management
-  - Atomic file operations (move on success, delete on failure)
-- Supports multiple output formats with format-specific handling:
-  - JSONL: Line-delimited JSON with null support
-  - Parquet: Columnar storage with native date types
-  - Ion: Text format (not binary) with null support
-  - CSV: Simple text format with empty strings for nulls
-- Consistent handling of:
-  - Missing fields (nulls or empty strings based on format)
-  - Dates (ISO 8601 or native types based on format)
-- Factory pattern for writer creation and configuration
+```python
+class MapperFactory:
+    """Factory for creating type-specific mappers"""
+    @classmethod
+    def create_mapper(cls, record_type: str) -> Optional[Mapper]:
+        """Get appropriate mapper for record type"""
+        pass
+```
+
+Key Features:
+- **Type Safety**: Strong typing with validation
+- **Factory Pattern**: Extensible mapper creation
+- **Error Context**: Detailed validation feedback
+- **Flexibility**: Support for partial records
+
+### 4. [Writer](docs/source/writer.md)
+The Writer component handles output generation:
+
+```python
+class AbstractWriter:
+    """Base class for format-specific writers"""
+    def __enter__(self) -> 'AbstractWriter':
+        """Safe resource management"""
+        pass
+    
+    def write(self, record: dict) -> None:
+        """Write single record"""
+        pass
+```
+
+Key Features:
+- **Multiple Formats**: JSONL, Parquet, Ion, CSV
+- **Safe Operations**: Atomic file handling
+- **Resource Management**: Context manager pattern
+- **Consistent Types**: Standardized type handling
 
 ### 5. [Main](docs/source/main.md)
-- Command-line interface with comprehensive options:
-  - `-h, --help`: Display usage instructions
-  - `-v, --version`: Show program version
-  - `-i, --input`: Input ZIP archive path (default: l_amat.zip)
-  - `-o, --output`: Output directory (default: output_dir/)
-  - `-f, --file-format`: Output format (default: jsonl)
-- Robust error handling and logging:
-  - ZIP archive validation and access
-  - File type verification (.dat files)
-  - Schema recognition from filenames
-  - Processing status and errors
-- Performance monitoring and reporting:
-  - Schema types processed
-  - Records validated per schema
-  - Total processing time
-- Memory-efficient processing:
-  - In-memory file handling for ZIP entries
-  - Streaming record processing
-  - Atomic file operations
+The Main component provides the command interface:
+
+```python
+def main() -> None:
+    """Process FCC database files"""
+    args = parse_args()
+    process_zip(args.input, args.output, args.format)
+```
+
+Key Features:
+- **CLI Interface**: Rich command-line options
+- **Error Handling**: Comprehensive error management
+- **Performance**: Processing statistics
+- **Resource Efficiency**: Streaming operations
 
 ## Technical Requirements
 
@@ -208,6 +242,24 @@ pip install -e ".[dev]"
 4. Run tests:
 ```bash
 pytest tests/
+```
+
+The project follows the standard Python package structure:
+```
+wdlp/
+  ├── src/
+  │   └── wdlp/           # Python package source files
+  │       ├── __init__.py
+  │       ├── reader.py   # File reading and parsing
+  │       ├── mapper.py   # Record type mapping
+  │       ├── writer.py   # Output generation
+  │       ├── schema.py   # Data models and validation
+  │       └── main.py     # CLI and orchestration
+  ├── tests/              # Test files
+  ├── docs/               # Documentation
+  │   └── source/
+  ├── data/               # Data files
+  └── setup.py           # Package configuration
 ```
 
 ## Docker Support

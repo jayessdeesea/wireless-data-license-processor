@@ -1,207 +1,354 @@
 # Mapper Component
 
+## Quick Start
+
+```python
+from wdlp.mapper import MapperFactory
+from wdlp.producer import Record
+from typing import Iterator
+
+def map_records(records: Iterator[Record]) -> Iterator[dict]:
+    """Map raw records to validated models"""
+    for record in records:
+        # Get appropriate mapper for record type
+        mapper = MapperFactory.create_mapper(record.fields[0])
+        if not mapper:
+            logger.warning(f"No mapper for type: {record.fields[0]}")
+            continue
+            
+        try:
+            # Map and validate record
+            model = mapper(record)
+            yield model.model_dump()
+        except MapperError as e:
+            logger.error(f"Mapping error: {e}")
+            raise
+
+# Example usage
+with open("AM.dat") as f:
+    parser = PullParser(f)
+    for mapped_record in map_records(parser):
+        process_record(mapped_record)
+```
+
 ## Overview
 
-The Mapper component transforms raw records from the Producer into validated Pydantic models. It uses the factory pattern to create appropriate mappers for different record types (AM, EN) and provides detailed validation feedback.
+The Mapper component transforms raw records into validated Pydantic models using Python's type system and validation patterns. It follows the factory pattern for extensibility and provides detailed validation feedback.
 
-## Architecture
+## Design Philosophy
 
-### Mapper Interface
+The implementation follows these Python idiomatic principles:
+
+1. **Type Safety**
+   ```python
+   from typing import Protocol, TypeVar, Type
+   from pydantic import BaseModel
+   
+   ModelT = TypeVar("ModelT", bound=BaseModel)
+   
+   class Mapper(Protocol[ModelT]):
+       """Protocol defining mapper interface"""
+       def __call__(self, record: Record) -> ModelT:
+           """Map raw record to validated model"""
+           ...
+   
+   class BaseMapper(Generic[ModelT]):
+       """Base implementation with common functionality"""
+       model_class: ClassVar[Type[ModelT]]
+       
+       def __call__(self, record: Record) -> ModelT:
+           """Template method for mapping"""
+           fields = self._extract_fields(record)
+           return self._create_model(fields)
+   ```
+
+2. **Validation Pipeline**
+   ```python
+   from dataclasses import dataclass
+   from typing import Any, Dict
+   
+   @dataclass
+   class ValidationContext:
+       """Context for validation pipeline"""
+       record: Record
+       fields: Dict[str, Any]
+       errors: List[str] = field(default_factory=list)
+       
+       def add_error(self, field: str, error: str) -> None:
+           """Track validation errors"""
+           self.errors.append(f"{field}: {error}")
+   
+   class ValidationPipeline:
+       """Chain of validation steps"""
+       def __init__(self, steps: List[ValidationStep]):
+           self.steps = steps
+           
+       def validate(self, context: ValidationContext) -> None:
+           """Run all validation steps"""
+           for step in self.steps:
+               step.validate(context)
+           if context.errors:
+               raise ValidationError(context.errors)
+   ```
+
+3. **Error Handling**
+   ```python
+   from dataclasses import dataclass
+   from typing import List, Optional
+   
+   @dataclass
+   class MapperError(Exception):
+       """Rich error information"""
+       record_line: int
+       field_name: str
+       expected: str
+       received: str
+       context: Optional[str] = None
+       
+       def __str__(self) -> str:
+           """Detailed error message"""
+           parts = [
+               f"Mapping error at line {self.record_line}",
+               f"Field: {self.field_name}",
+               f"Expected: {self.expected}",
+               f"Received: {self.received}"
+           ]
+           if self.context:
+               parts.append(f"Context: {self.context}")
+           return "\n".join(parts)
+   ```
+
+## Factory Implementation
 
 ```python
-from abc import ABC, abstractmethod
-from typing import TypeVar, Type
-from pydantic import BaseModel
+from typing import Dict, Type, Optional
+from functools import lru_cache
 
-T = TypeVar('T', bound=BaseModel)
-
-class Mapper(ABC):
-    """Abstract base class for record mappers"""
-    @abstractmethod
-    def __call__(self, record: Record) -> T:
-        """Transform a record into a Pydantic model"""
-        pass
-```
-
-### Factory Implementation
-
-```python
 class MapperFactory:
-    """Factory for creating record type-specific mappers"""
-    _mappers = {
-        'AM': AMMapper,
-        'EN': ENMapper
+    """Factory for creating record-specific mappers"""
+    _mappers: Dict[str, Type[Mapper]] = {
+        "AM": AMMapper,
+        "EN": ENMapper
     }
-
-    @classmethod
-    def create_mapper(cls, mapper_type: str) -> Mapper:
-        """Create a mapper for the specified record type"""
-        if mapper_type not in cls._mappers:
-            return None  # Return None for unknown record types (non-fatal)
-        return cls._mappers[mapper_type]()
-```
-
-### Record Type Mappers
-
-```python
-class AMMapper(Mapper):
-    """Mapper for Amateur License records"""
-    def __call__(self, record: Record) -> AMRecord:
-        try:
-            # Convert field values to appropriate types
-            system_id = int(record.fields[1]) if record.fields[1] else None
-            region_code = int(record.fields[7]) if record.fields[7] else None
-            
-            return AMRecord(
-                record_type=record.fields[0],
-                system_id=system_id,
-                uls_file_number=record.fields[2],
-                ebf_number=record.fields[3],
-                call_sign=record.fields[4],
-                operator_class=record.fields[5],
-                group_code=record.fields[6],
-                region_code=region_code,
-                trustee_call_sign=record.fields[8],
-                trustee_indicator=record.fields[9],
-                physician_certification=record.fields[10],
-                ve_signature=record.fields[11],
-                systematic_call_sign_change=record.fields[12],
-                vanity_call_sign_change=record.fields[13],
-                vanity_relationship=record.fields[14],
-                previous_call_sign=record.fields[15],
-                previous_operator_class=record.fields[16],
-                trustee_name=record.fields[17]
-            )
-        except (ValidationError, IndexError, ValueError) as e:
-            raise MapperError(
-                record=record,
-                expected="Valid Amateur License record fields",
-                received=f"Error: {str(e)}"
-            )
-
-class ENMapper(Mapper):
-    """Mapper for Entity records"""
-    def __call__(self, record: Record) -> ENRecord:
-        try:
-            # Convert field values to appropriate types
-            system_id = int(record.fields[1]) if record.fields[1] else None
-            linked_system_id = int(record.fields[28]) if record.fields[28] else None
-            
-            # Parse date field
-            status_date = None
-            if record.fields[26]:
-                try:
-                    month, day, year = record.fields[26].split('/')
-                    status_date = date(int(year), int(month), int(day))
-                except ValueError as e:
-                    raise ValueError(f"Invalid status_date format: {record.fields[26]}")
-            
-            return ENRecord(
-                record_type=record.fields[0],
-                system_id=system_id,
-                uls_file_number=record.fields[2],
-                ebf_number=record.fields[3],
-                call_sign=record.fields[4],
-                entity_type=record.fields[5],
-                licensee_id=record.fields[6],
-                entity_name=record.fields[7],
-                first_name=record.fields[8],
-                mi=record.fields[9],
-                last_name=record.fields[10],
-                suffix=record.fields[11],
-                phone=record.fields[12],
-                fax=record.fields[13],
-                email=record.fields[14],
-                street_address=record.fields[15],
-                city=record.fields[16],
-                state=record.fields[17],
-                zip_code=record.fields[18],
-                po_box=record.fields[19],
-                attention_line=record.fields[20],
-                sgin=record.fields[21],
-                frn=record.fields[22],
-                applicant_type_code=record.fields[23],
-                applicant_type_code_other=record.fields[24],
-                status_code=record.fields[25],
-                status_date=status_date,
-                license_type=record.fields[27],
-                linked_system_id=linked_system_id,
-                linked_call_sign=record.fields[29]
-            )
-        except (ValidationError, IndexError, ValueError) as e:
-            raise MapperError(
-                record=record,
-                expected="Valid Entity record fields",
-                received=f"Error: {str(e)}"
-            )
-```
-
-## Error Handling
-
-```python
-class MapperError(Exception):
-    """Error during record mapping"""
-    def __init__(self, record: Record, expected: str, received: List[str]):
-        self.record = record
-        self.expected = expected
-        self.received = received
-        super().__init__(
-            f"Mapping error at line {record.line}:\n"
-            f"Expected: {expected}\n"
-            f"Received: {received}"
-        )
-```
-
-## Validation Process
-
-1. Field Count Validation
-   - Verify number of fields matches schema
-   - Raise error if mismatch
-
-2. Data Type Validation
-   - Convert strings to appropriate types
-   - Validate against Pydantic field constraints
-   - Handle optional fields
-
-3. Field-Specific Validation
-   - Length constraints
-   - Pattern matching
-   - Numeric ranges
-   - Date formats
-
-## Usage Example
-
-```python
-# Create mapper for AM records
-mapper = MapperFactory.create_mapper('AM')
-
-try:
-    # Map raw record to Pydantic model
-    record = Record(line=1, fields=['AM', '123456789', ...])
-    am_record = mapper(record)
     
-    # Access validated fields
-    print(f"System ID: {am_record.system_id}")
-    print(f"Call Sign: {am_record.call_sign}")
-except MapperError as e:
-    print(f"Validation failed: {e}")
+    @classmethod
+    @lru_cache(maxsize=None)
+    def create_mapper(cls, record_type: str) -> Optional[Mapper]:
+        """Get cached mapper instance"""
+        mapper_class = cls._mappers.get(record_type)
+        if not mapper_class:
+            return None
+        return mapper_class()
+    
+    @classmethod
+    def register_mapper(cls, record_type: str, mapper_class: Type[Mapper]) -> None:
+        """Register new mapper type"""
+        if record_type in cls._mappers:
+            raise ValueError(f"Mapper already registered for {record_type}")
+        cls._mappers[record_type] = mapper_class
+        cls.create_mapper.cache_clear()  # Clear cache
 ```
 
-## Extension
+## Record Type Mappers
+
+### Amateur License Mapper
+
+```python
+class AMMapper(BaseMapper[AMRecord]):
+    """Mapper for Amateur License records"""
+    model_class = AMRecord
+    
+    def _extract_fields(self, record: Record) -> Dict[str, Any]:
+        """Extract and convert fields"""
+        fields = super()._extract_fields(record)
+        
+        # Type conversions
+        if fields.get("system_id"):
+            fields["system_id"] = int(fields["system_id"])
+            
+        # Date parsing
+        if fields.get("status_date"):
+            fields["status_date"] = parse_date(fields["status_date"])
+            
+        return fields
+        
+    def _validate_fields(self, fields: Dict[str, Any]) -> None:
+        """Additional field validation"""
+        if "operator_class" in fields:
+            validate_operator_class(fields["operator_class"])
+```
+
+### Entity Mapper
+
+```python
+class ENMapper(BaseMapper[ENRecord]):
+    """Mapper for Entity records"""
+    model_class = ENRecord
+    
+    def _extract_fields(self, record: Record) -> Dict[str, Any]:
+        """Extract and convert fields"""
+        fields = super()._extract_fields(record)
+        
+        # Handle complex fields
+        if "name" in fields:
+            fields.update(parse_name(fields["name"]))
+            
+        # Format standardization
+        if "phone" in fields:
+            fields["phone"] = standardize_phone(fields["phone"])
+            
+        return fields
+```
+
+## Validation Rules
+
+```python
+from datetime import datetime
+from typing import Any
+
+class FieldValidator:
+    """Field-specific validation rules"""
+    
+    @staticmethod
+    def validate_date(value: Any) -> datetime:
+        """Validate and parse date field"""
+        if not value:
+            return None
+        try:
+            return datetime.strptime(value, "%m/%d/%Y")
+        except ValueError as e:
+            raise ValidationError(f"Invalid date format: {value}")
+    
+    @staticmethod
+    def validate_phone(value: str) -> str:
+        """Validate phone number format"""
+        if not value:
+            return None
+        clean = re.sub(r"\D", "", value)
+        if len(clean) != 10:
+            raise ValidationError(f"Invalid phone number: {value}")
+        return clean
+```
+
+## Performance Optimization
+
+1. **Caching**
+   ```python
+   from functools import lru_cache
+   
+   class CachedMapper(BaseMapper):
+       """Mapper with result caching"""
+       @lru_cache(maxsize=1024)
+       def __call__(self, record: Record) -> ModelT:
+           """Cache mapped results"""
+           return super().__call__(record)
+   ```
+
+2. **Lazy Loading**
+   ```python
+   class LazyMapper(BaseMapper):
+       """Mapper with lazy validation"""
+       def __call__(self, record: Record) -> ModelT:
+           """Defer validation until access"""
+           fields = self._extract_fields(record)
+           return self.model_class.construct(**fields)
+   ```
+
+## Testing Strategy
+
+```python
+import pytest
+from datetime import date
+
+class TestAMMapper:
+    """Test suite for Amateur License mapper"""
+    
+    @pytest.fixture
+    def mapper(self) -> AMMapper:
+        """Create test mapper"""
+        return AMMapper()
+    
+    def test_valid_record(self, mapper):
+        """Test successful mapping"""
+        record = Record(
+            line=1,
+            fields=["AM", "123456", "W1AW", "A"]
+        )
+        result = mapper(record)
+        assert result.system_id == 123456
+        assert result.call_sign == "W1AW"
+    
+    def test_invalid_date(self, mapper):
+        """Test date validation"""
+        record = Record(
+            line=1,
+            fields=["AM", "123456", "", "13/99/2024"]
+        )
+        with pytest.raises(MapperError) as exc:
+            mapper(record)
+        assert "Invalid date" in str(exc.value)
+```
+
+## Common Pitfalls
+
+1. **Field Access**
+   ```python
+   # Wrong: Direct index access
+   value = record.fields[5]  # IndexError risk
+   
+   # Correct: Safe access
+   value = record.fields[5] if len(record.fields) > 5 else None
+   ```
+
+2. **Type Conversion**
+   ```python
+   # Wrong: Direct conversion
+   number = int(value)  # ValueError risk
+   
+   # Correct: Safe conversion
+   number = int(value) if value and value.isdigit() else None
+   ```
+
+## Extension Guide
 
 To add support for a new record type:
 
-1. Create Pydantic model for the record type
-2. Implement new mapper class
-3. Add to MapperFactory._mappers
-4. Update validation logic as needed
-
-Example:
+1. Create model and mapper:
 ```python
-class NewRecordMapper(Mapper):
-    def __call__(self, record: Record) -> NewRecord:
-        # Implementation for new record type
-        pass
+class XXRecord(BaseModel):
+    """New record type schema"""
+    record_type: Literal["XX"]
+    field1: str
+    field2: Optional[int]
 
-MapperFactory._mappers['NEW'] = NewRecordMapper
+class XXMapper(BaseMapper[XXRecord]):
+    """Mapper for new record type"""
+    model_class = XXRecord
+    
+    def _extract_fields(self, record: Record) -> Dict[str, Any]:
+        """Custom field extraction"""
+        fields = super()._extract_fields(record)
+        # Add custom processing
+        return fields
+```
+
+2. Register with factory:
+```python
+# Register new mapper
+MapperFactory.register_mapper("XX", XXMapper)
+
+# Use new mapper
+mapper = MapperFactory.create_mapper("XX")
+result = mapper(record)
+```
+
+3. Add tests:
+```python
+def test_xx_mapper():
+    """Test new record type mapping"""
+    mapper = XXMapper()
+    record = Record(line=1, fields=["XX", "value1", "123"])
+    result = mapper(record)
+    assert result.field1 == "value1"
+    assert result.field2 == 123
 ```

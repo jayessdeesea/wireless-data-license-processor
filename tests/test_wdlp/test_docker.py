@@ -1,0 +1,143 @@
+"""Tests for Docker setup"""
+import pytest
+import subprocess
+import json
+from pathlib import Path
+import time
+
+@pytest.mark.integration
+def test_docker_build():
+    """Test Docker image build"""
+    result = subprocess.run(
+        ["docker", "build", "-t", "wdlp:test", "."],
+        capture_output=True,
+        text=True
+    )
+    assert result.returncode == 0, f"Docker build failed: {result.stderr}"
+
+@pytest.mark.integration
+def test_docker_help():
+    """Test Docker container help output"""
+    result = subprocess.run(
+        ["docker", "run", "--rm", "wdlp:test", "--help"],
+        capture_output=True,
+        text=True
+    )
+    assert result.returncode == 0
+    assert "--input" in result.stdout
+    assert "--output" in result.stdout
+    assert "--format" in result.stdout
+
+@pytest.mark.integration
+def test_docker_processing(data_dir, output_dir):
+    """Test end-to-end processing in Docker"""
+    # Create test ZIP file
+    import zipfile
+    zip_path = data_dir / "test.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("AM.dat", "AM|123456789|ULS123|EBF456|W1AW|A|\n")
+        zf.writestr("EN.dat", "EN|987654321|ULS789|EBF012|K1ABC|I|LIC123|Test Entity|\n")
+    
+    # Run Docker container
+    result = subprocess.run([
+        "docker", "run",
+        "--rm",
+        "-v", f"{data_dir}:/data/input:ro",  # Read-only input
+        "-v", f"{output_dir}:/data/output",   # Output directory
+        "wdlp:test",
+        "--input", "/data/input/test.zip",
+        "--output", "/data/output",
+        "--format", "jsonl"
+    ], capture_output=True, text=True)
+    
+    assert result.returncode == 0, f"Docker run failed: {result.stderr}"
+    
+    # Check output files
+    assert (output_dir / "AM.jsonl").exists()
+    assert (output_dir / "EN.jsonl").exists()
+    
+    # Verify AM record content
+    with open(output_dir / "AM.jsonl") as f:
+        am_record = json.loads(f.read())
+        assert am_record["record_type"] == "AM"
+        assert am_record["system_id"] == 123456789
+        assert am_record["call_sign"] == "W1AW"
+    
+    # Verify EN record content
+    with open(output_dir / "EN.jsonl") as f:
+        en_record = json.loads(f.read())
+        assert en_record["record_type"] == "EN"
+        assert en_record["system_id"] == 987654321
+        assert en_record["entity_name"] == "Test Entity"
+
+@pytest.mark.integration
+def test_docker_compose(data_dir):
+    """Test Docker Compose setup"""
+    # Create test data
+    import zipfile
+    zip_path = data_dir / "l_amat.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("AM.dat", "AM|123456789|ULS123|EBF456|W1AW|A|\n")
+    
+    # Run docker-compose
+    result = subprocess.run(
+        ["docker-compose", "up", "--abort-on-container-exit"],
+        capture_output=True,
+        text=True
+    )
+    assert result.returncode == 0, f"Docker Compose failed: {result.stderr}"
+    
+    # Check output
+    output_path = data_dir / "output" / "AM.jsonl"
+    assert output_path.exists()
+    
+    with open(output_path) as f:
+        record = json.loads(f.read())
+        assert record["record_type"] == "AM"
+        assert record["system_id"] == 123456789
+
+@pytest.mark.integration
+def test_docker_error_handling():
+    """Test Docker error handling"""
+    # Test with invalid input
+    result = subprocess.run([
+        "docker", "run",
+        "--rm",
+        "wdlp:test",
+        "--input", "/nonexistent.zip",
+        "--output", "/data/output"
+    ], capture_output=True, text=True)
+    
+    assert result.returncode != 0
+    assert "Error" in result.stderr
+
+@pytest.mark.integration
+def test_docker_performance(data_dir, output_dir):
+    """Test Docker container performance"""
+    # Create large test file
+    import zipfile
+    zip_path = data_dir / "large.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        # Create file with 1000 records
+        records = "AM|123456789|ULS123|EBF456|W1AW|A|\n" * 1000
+        zf.writestr("AM.dat", records)
+    
+    # Time the processing
+    start_time = time.time()
+    
+    result = subprocess.run([
+        "docker", "run",
+        "--rm",
+        "-v", f"{data_dir}:/data/input:ro",
+        "-v", f"{output_dir}:/data/output",
+        "wdlp:test",
+        "--input", "/data/input/large.zip",
+        "--output", "/data/output",
+        "--format", "jsonl"
+    ], capture_output=True, text=True)
+    
+    duration = time.time() - start_time
+    assert result.returncode == 0
+    
+    # Should process at least 100 records per second
+    assert duration < 10, "Processing too slow"

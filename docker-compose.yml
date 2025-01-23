@@ -6,9 +6,11 @@ services:
       context: .
     container_name: wdlp_container
     volumes:
-      - ./data:/data  # Mount the local data directory to the container
+      - ./data:/data  # Mount the local data directory
+    environment:
+      - PYTHONUNBUFFERED=1  # Enable real-time logging
     command: >
-      python wdlp/main.py
-      --input-dat-file /data/sample.dat
+      --input /data/l_amat.zip
       --output /data/output
-      --output-file-format jsonl
+      --format jsonl
+      --verbose

@@ -1,22 +1,95 @@
 # Schema Component
 
+## Quick Start
+
+```python
+from wdlp.schema import AMRecord, ENRecord
+from datetime import date
+
+# Create and validate an Amateur License record
+am_record = AMRecord(
+    record_type="AM",
+    system_id=123456789,
+    call_sign="W1AW",
+    operator_class="A"
+)
+
+# Create and validate an Entity record
+en_record = ENRecord(
+    record_type="EN",
+    system_id=987654321,
+    entity_name="Test Entity",
+    status_date=date(2024, 2, 15)
+)
+
+# Access validated data
+print(am_record.model_dump_json(indent=2))
+print(en_record.model_dump_json(indent=2))
+```
+
 ## Overview
 
-The Schema component provides Pydantic models that represent and validate FCC Wireless License Database records. These models are based on the [Public Access Database Definitions](https://www.fcc.gov/sites/default/files/public_access_database_definitions_20240215.pdf) and implement comprehensive validation rules.
+The Schema component provides Pydantic models that represent and validate FCC Wireless License Database records. These models follow Python best practices and implement comprehensive validation rules based on the [Public Access Database Definitions](https://www.fcc.gov/sites/default/files/public_access_database_definitions_20240215.pdf).
+
+## Design Philosophy
+
+The schema implementation follows these Python idiomatic principles:
+
+1. **Type Safety**
+   ```python
+   from typing import Optional, Literal
+   from datetime import date
+   
+   class BaseRecord(BaseModel):
+       """Base class for all record types"""
+       record_type: str  # Required in all records
+       system_id: Optional[int] = None  # Optional in all records
+       
+       class Config:
+           """Pydantic model configuration"""
+           frozen = True  # Immutable after creation
+           extra = "forbid"  # No extra fields allowed
+   ```
+
+2. **Descriptive Exceptions**
+   ```python
+   from pydantic import ValidationError
+   
+   try:
+       record = AMRecord(record_type="XX")  # Invalid type
+   except ValidationError as e:
+       print(e.errors())  # Detailed validation errors
+   ```
+
+3. **Rich Comparisons**
+   ```python
+   def __eq__(self, other: object) -> bool:
+       """Implement value-based equality"""
+       if not isinstance(other, BaseRecord):
+           return NotImplemented
+       return self.model_dump() == other.model_dump()
+   ```
+
+4. **String Representations**
+   ```python
+   def __repr__(self) -> str:
+       """Unambiguous string representation"""
+       return f"{self.__class__.__name__}({self.model_dump()})"
+   
+   def __str__(self) -> str:
+       """Human-readable string representation"""
+       return f"{self.record_type} Record: {self.system_id}"
+   ```
 
 ## Record Types
 
 ### Amateur License Record (AM)
 
 ```python
-class AMRecord(BaseModel):
-    """Amateur License record schema"""
-    record_type: Optional[str] = Field(
-        None,
-        min_length=2,
-        max_length=2,
-        pattern="^AM$",
-        description="Record type identifier, must be 'AM'"
+class AMRecord(BaseRecord):
+    """Amateur License record schema with comprehensive validation"""
+    record_type: Literal["AM"] = Field(
+        description="Record type identifier [AM]"
     )
     system_id: Optional[int] = Field(
         None,
@@ -24,145 +97,222 @@ class AMRecord(BaseModel):
         le=999999999,
         description="Unique system identifier (0-999999999)"
     )
-    # ... additional fields
+    operator_class: Optional[Literal["A", "E", "G", "N", "T"]] = Field(
+        None,
+        description="Operator class (A=Advanced, E=Amateur Extra, etc.)"
+    )
+    # ... additional fields with proper typing
 ```
 
-Full field list (18 fields):
-| Position | Field Name | Type | Constraints | Description |
-|----------|------------|------|-------------|-------------|
-| 1 | record_type | str | char(2) | Record type [AM] |
-| 2 | system_id | int | numeric(9,0) | Unique system identifier |
-| 3 | uls_file_number | str | char(14) | ULS file number |
-| 4 | ebf_number | str | varchar(30) | EBF number |
-| 5 | call_sign | str | char(10) | Call sign |
-| 6 | operator_class | str | char(1) | Operator class |
-| 7 | group_code | str | char(1) | Group code |
-| 8 | region_code | int | tinyint | Region code |
-| 9 | trustee_call_sign | str | char(10) | Trustee call sign |
-| 10 | trustee_indicator | str | char(1) | Trustee indicator |
-| 11 | physician_certification | str | char(1) | Physician certification |
-| 12 | ve_signature | str | char(1) | VE signature |
-| 13 | systematic_call_sign_change | str | char(1) | Systematic call sign change |
-| 14 | vanity_call_sign_change | str | char(1) | Vanity call sign change |
-| 15 | vanity_relationship | str | char(12) | Vanity relationship |
-| 16 | previous_call_sign | str | char(10) | Previous call sign |
-| 17 | previous_operator_class | str | char(1) | Previous operator class |
-| 18 | trustee_name | str | varchar(50) | Trustee name |
+[View full AM field list](https://github.com/[repository]/wdlp/blob/main/docs/fields/am_fields.md)
 
 ### Entity Record (EN)
 
 ```python
-class ENRecord(BaseModel):
-    """Entity record schema"""
-    record_type: Optional[str] = Field(
-        None,
-        min_length=2,
-        max_length=2,
-        pattern="^EN$",
-        description="Record type identifier, must be 'EN'"
+class ENRecord(BaseRecord):
+    """Entity record schema with comprehensive validation"""
+    record_type: Literal["EN"] = Field(
+        description="Record type identifier [EN]"
     )
-    system_id: Optional[int] = Field(
+    entity_type: Optional[Literal["I", "B", "G", "M", "L"]] = Field(
         None,
-        ge=0,
-        le=999999999,
-        description="Unique system identifier (0-999999999)"
+        description="Entity type (I=Individual, B=Business, etc.)"
     )
-    # ... additional fields
+    status_date: Optional[date] = Field(
+        None,
+        description="Status effective date"
+    )
+    # ... additional fields with proper typing
 ```
 
-Full field list (30 fields):
-| Position | Field Name | Type | Constraints | Description |
-|----------|------------|------|-------------|-------------|
-| 1 | record_type | str | char(2) | Record type [EN] |
-| 2 | system_id | int | numeric(9,0) | Unique system identifier |
-| 3 | uls_file_number | str | char(14) | ULS file number |
-| 4 | ebf_number | str | varchar(30) | EBF number |
-| 5 | call_sign | str | char(10) | Call sign |
-| 6 | entity_type | str | char(2) | Entity type |
-| 7 | licensee_id | str | char(9) | Licensee identifier |
-| 8 | entity_name | str | varchar(200) | Entity name |
-| 9 | first_name | str | varchar(20) | First name |
-| 10 | mi | str | char(1) | Middle initial |
-| 11 | last_name | str | varchar(20) | Last name |
-| 12 | suffix | str | char(3) | Name suffix |
-| 13 | phone | str | char(10) | Phone number |
-| 14 | fax | str | char(10) | Fax number |
-| 15 | email | str | varchar(50) | Email address |
-| 16 | street_address | str | varchar(60) | Street address |
-| 17 | city | str | varchar(20) | City |
-| 18 | state | str | char(2) | State |
-| 19 | zip_code | str | char(9) | Zip code |
-| 20 | po_box | str | varchar(20) | PO Box |
-| 21 | attention_line | str | varchar(35) | Attention line |
-| 22 | sgin | str | char(3) | Signature identifier |
-| 23 | frn | str | char(10) | FCC Registration Number |
-| 24 | applicant_type_code | str | char(1) | Applicant type code |
-| 25 | applicant_type_code_other | str | char(40) | Other applicant type |
-| 26 | status_code | str | char(1) | Status code |
-| 27 | status_date | date | mm/dd/yyyy | Status date |
-| 28 | license_type | str | char(1) | 3.7 GHz license type |
-| 29 | linked_system_id | int | numeric(9,0) | Linked system identifier |
-| 30 | linked_call_sign | str | char(10) | Linked call sign |
+[View full EN field list](https://github.com/[repository]/wdlp/blob/main/docs/fields/en_fields.md)
 
 ## Validation Rules
 
 ### String Fields
-- Fixed-length (char): Exact length required
-- Variable-length (varchar): Maximum length enforced
-- Pattern matching where applicable (e.g., record types)
-- All fields are optional to handle partial records
-
-### Numeric Fields
-- Integer ranges enforced
-- Type conversion from string input
-- Validation of decimal places
-
-### Date Fields
-- Input format: mm/dd/yyyy (as specified in database definition)
-- Internal storage: ISO 8601 (YYYY-MM-DD)
-- Output format varies by consumer:
-  - JSONL/CSV/Ion: ISO 8601 string
-  - Parquet: Native date type
-- Validation rules:
-  - Valid calendar dates only
-  - Year range: 1900-present
-  - Future dates rejected
-
-## Usage Example
-
 ```python
-try:
-    # Create and validate an Amateur License record
-    am_record = AMRecord(
-        record_type="AM",
-        system_id=123456789,
-        call_sign="W1AW",
-        operator_class="A"
-    )
-    print(f"Valid record: {am_record.model_dump()}")
-except ValidationError as e:
-    print(f"Validation failed: {e}")
+from pydantic import constr
+
+# Fixed-length strings
+call_sign: Optional[constr(min_length=10, max_length=10)] = None
+
+# Variable-length strings with pattern
+email: Optional[constr(pattern=r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")] = None
 ```
 
-## Extension
-
-To add support for new record types:
-
-1. Create new Pydantic model class
-2. Define fields with appropriate types and constraints
-3. Add validation rules as needed
-4. Update schema documentation
-
-Example:
+### Numeric Fields
 ```python
-class NewRecord(BaseModel):
-    """New record type schema"""
-    record_type: Optional[str] = Field(
-        None,
-        min_length=2,
-        max_length=2,
-        pattern="^XX$",
-        description="Record type identifier, must be 'XX'"
+from pydantic import confloat, conint
+
+# Integer with range
+region_code: Optional[conint(ge=0, le=9)] = None
+
+# Decimal with precision
+latitude: Optional[confloat(ge=-90, le=90, decimal_places=6)] = None
+```
+
+### Date Fields
+```python
+from datetime import date
+from pydantic import validator
+from typing import Optional
+
+class DateField:
+    """Mixin for date field validation"""
+    status_date: Optional[date] = None
+    
+    @validator("status_date")
+    def validate_date(cls, v: Optional[date]) -> Optional[date]:
+        """Validate date is within acceptable range"""
+        if v is None:
+            return None
+        if v.year < 1900:
+            raise ValueError("Date must be after 1900")
+        if v > date.today():
+            raise ValueError("Future dates not allowed")
+        return v
+```
+
+## Performance Considerations
+
+1. **Memory Efficiency**
+   ```python
+   from pydantic import BaseModel
+   
+   class Config:
+       """Optimize memory usage"""
+       frozen = True  # Immutable instances
+       extra = "forbid"  # No dynamic fields
+       validate_assignment = False  # No runtime checks
+   ```
+
+2. **Validation Caching**
+   ```python
+   from functools import lru_cache
+   
+   @lru_cache(maxsize=1024)
+   def validate_call_sign(value: str) -> bool:
+       """Cache validation results for common values"""
+       return bool(re.match(r"^[A-Z0-9]{10}$", value))
+   ```
+
+## Testing Strategy
+
+```python
+import pytest
+from datetime import date
+
+def test_am_record_validation():
+    """Test AM record validation rules"""
+    # Valid record
+    record = AMRecord(
+        record_type="AM",
+        system_id=123,
+        operator_class="A"
     )
-    # Additional fields...
+    assert record.operator_class == "A"
+    
+    # Invalid operator class
+    with pytest.raises(ValidationError) as exc:
+        AMRecord(operator_class="X")
+    assert "operator_class" in str(exc.value)
+
+def test_date_validation():
+    """Test date field validation"""
+    # Invalid future date
+    future = date.today().replace(year=date.today().year + 1)
+    with pytest.raises(ValidationError) as exc:
+        ENRecord(status_date=future)
+    assert "Future dates not allowed" in str(exc.value)
+```
+
+## Common Pitfalls
+
+1. **Optional vs Required Fields**
+   ```python
+   # Wrong: Implicit Optional
+   field: str = None  # Type checker won't catch this
+   
+   # Correct: Explicit Optional
+   field: Optional[str] = None
+   ```
+
+2. **Date Format Handling**
+   ```python
+   # Wrong: Direct string assignment
+   status_date = "02/15/2024"  # Will raise ValidationError
+   
+   # Correct: Parse string to date
+   from datetime import datetime
+   status_date = datetime.strptime("02/15/2024", "%m/%d/%Y").date()
+   ```
+
+3. **Validation Error Handling**
+   ```python
+   # Wrong: Generic except
+   try:
+       record = AMRecord(...)
+   except Exception as e:
+       pass  # Catches too much
+   
+   # Correct: Specific except
+   try:
+       record = AMRecord(...)
+   except ValidationError as e:
+       # Handle validation errors
+       for error in e.errors():
+           print(f"Field: {error['loc']}, Error: {error['msg']}")
+   ```
+
+## Extension Guide
+
+To add support for a new record type:
+
+1. Create the schema class:
+```python
+from typing import Optional, Literal
+from pydantic import BaseModel, Field
+
+class NewRecord(BaseRecord):
+    """New record type schema"""
+    record_type: Literal["XX"] = Field(
+        description="Record type identifier [XX]"
+    )
+    
+    class Config:
+        """Schema configuration"""
+        schema_extra = {
+            "example": {
+                "record_type": "XX",
+                "system_id": 123456789
+            }
+        }
+```
+
+2. Add validation rules:
+```python
+    @validator("field_name")
+    def validate_field(cls, v: Optional[str]) -> Optional[str]:
+        """Custom validation logic"""
+        if v is not None:
+            # Implement validation
+            pass
+        return v
+```
+
+3. Update factory mapping:
+```python
+SCHEMA_MAPPING = {
+    "AM": AMRecord,
+    "EN": ENRecord,
+    "XX": NewRecord  # Add new schema
+}
+```
+
+4. Add tests:
+```python
+def test_new_record():
+    """Test new record type validation"""
+    record = NewRecord(record_type="XX", ...)
+    assert record.record_type == "XX"
 ```

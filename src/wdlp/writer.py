@@ -2,6 +2,11 @@ import json
 import tempfile
 import os
 from abc import ABC, abstractmethod
+
+class WriterError(Exception):
+    """Base exception for writer errors"""
+    pass
+
 from datetime import date
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -31,18 +36,32 @@ class AbstractWriter(ABC):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit - handle file finalization"""
-        if self._writer:
-            self._close_writer()
-        
-        if self._temp_file:
-            if exc_type is None:
-                # Success - move temp file to final location
-                os.makedirs(os.path.dirname(self.final_path), exist_ok=True)
-                os.replace(self._temp_file.name, self.final_path)
-            else:
-                # Error - delete temp file
-                os.unlink(self._temp_file.name)
+        try:
+            if self._writer:
+                try:
+                    self._close_writer()
+                except Exception as e:
+                    raise WriterError(f"Failed to close writer: {e}")
+
+            if self._temp_file:
+                if exc_type is None:
+                    try:
+                        # Success - move temp file to final location
+                        os.makedirs(os.path.dirname(self.final_path), exist_ok=True)
+                        os.replace(self._temp_file.name, self.final_path)
+                    except Exception as e:
+                        raise WriterError(f"Failed to finalize output file: {e}")
+                else:
+                    # Error occurred - clean up temp file
+                    try:
+                        if os.path.exists(self._temp_file.name):
+                            os.unlink(self._temp_file.name)
+                    except Exception:
+                        # Ignore cleanup errors on failure path
+                        pass
+        finally:
             self._temp_file = None
+            self._writer = None
 
     @abstractmethod
     def write(self, record: Dict[str, Any]):
@@ -94,9 +113,16 @@ class JSONLWriter(AbstractWriter):
         def json_serializer(obj):
             if isinstance(obj, date):
                 return obj.isoformat()
-            raise TypeError(f"Type {type(obj)} not serializable")
+            if hasattr(obj, 'isoformat'):  # Handle other datetime-like objects
+                return obj.isoformat()
+            if hasattr(obj, '__str__'):  # Try string conversion as fallback
+                return str(obj)
+            raise TypeError(f"Type {type(obj)} not serializable: {obj!r}")
 
-        return json.dumps(record, default=json_serializer)
+        try:
+            return json.dumps(record, default=json_serializer)
+        except TypeError as e:
+            raise WriterError(f"Failed to serialize record: {e}")
 
 class ParquetWriter(AbstractWriter):
     """Writer for Apache Parquet format"""
@@ -147,16 +173,25 @@ class ParquetWriter(AbstractWriter):
         if not self._records:
             return
 
-        table = pa.Table.from_pylist(self._records, schema=self._schema)
-        if not os.path.exists(self._temp_file.name):
-            pq.write_table(table, self._temp_file.name)
-        else:
-            pq.write_table(
-                table,
-                self._temp_file.name,
-                append=True
-            )
-        self._records = []
+        try:
+            table = pa.Table.from_pylist(self._records, schema=self._schema)
+            
+            if not os.path.exists(self._temp_file.name):
+                # First write - create new file
+                pq.write_table(table, self._temp_file.name)
+            else:
+                # Append to existing file by concatenating tables
+                try:
+                    existing = pq.read_table(self._temp_file.name)
+                    combined = pa.concat_tables([existing, table])
+                    pq.write_table(combined, self._temp_file.name)
+                except Exception:
+                    # If reading existing file fails, just write the new table
+                    pq.write_table(table, self._temp_file.name)
+                
+            self._records = []
+        except Exception as e:
+            raise WriterError(f"Failed to write Parquet batch: {e}")
 
 class IonWriter(AbstractWriter):
     """Writer for Amazon Ion format"""

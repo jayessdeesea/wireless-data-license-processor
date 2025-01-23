@@ -9,4 +9,20 @@ services:
       - ./data:/data  # Mount the local data directory
     environment:
       - PYTHONUNBUFFERED=1  # Enable real-time logging
-    command: wdlp -i /data/l_amat.zip -o /data/output
+    command: --input /data/l_amat.zip --output /data/output
+
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: wdlp_test_container
+    volumes:
+      - ./data:/data  # Mount the local data directory
+      - ./tests:/app/tests  # Mount tests directory for live updates
+      - ./src:/app/src  # Mount source directory for live updates
+      - /var/run/docker.sock:/var/run/docker.sock  # Mount Docker socket for Docker tests
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+      - SKIP_DOCKER_TESTS=1  # Skip Docker-specific tests since they require Docker CLI
+    command: -v --cov=wdlp --cov-report=term-missing -m "not docker" tests/  # Exclude Docker tests

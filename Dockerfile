@@ -4,7 +4,7 @@ FROM python:3.9-slim
 WORKDIR /app
 
 # Copy package files
-COPY setup.py requirements.txt ./
+COPY setup.py requirements.txt README.md ./
 COPY src/wdlp ./src/wdlp
 
 RUN pip install --upgrade pip
@@ -14,6 +14,10 @@ RUN pip install --no-cache-dir -e .
 
 # Create data directory
 RUN mkdir /data
+
+# Add debug logging
+ENV PYTHONUNBUFFERED=1
+ENV LOGLEVEL=DEBUG
 
 # Define the default command
 ENTRYPOINT ["wdlp"]

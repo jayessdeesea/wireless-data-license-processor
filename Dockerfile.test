@@ -1,0 +1,32 @@
+FROM python:3.9-slim
+
+# Set the working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy package files and tests
+COPY setup.py requirements.txt README.md ./
+COPY src/wdlp ./src/wdlp
+COPY tests ./tests
+
+RUN pip install --upgrade pip
+
+# Install the package and all dependencies in editable mode
+RUN pip install --no-cache-dir -e ".[email]"
+
+# Create test data directory and sample files
+RUN mkdir -p /data/test_data
+RUN echo "AM|123456789|W1AW|A" > /data/test_data/valid_am.dat
+RUN echo "EN|I|2024-01-23|John Doe|123-456-7890|test@example.com" > /data/test_data/valid_en.dat
+
+# Add debug logging
+ENV PYTHONUNBUFFERED=1
+ENV LOGLEVEL=DEBUG
+
+# Set pytest as the entrypoint
+ENTRYPOINT ["pytest"]
+CMD ["--help"]

@@ -32,28 +32,32 @@ class AMMapper(Mapper):
     def __call__(self, record: Record) -> AMRecord:
         try:
             # Convert field values to appropriate types
-            system_id = int(record.fields[1]) if record.fields[1] else None
-            region_code = int(record.fields[7]) if record.fields[7] else None
+            def get_field(fields: list, index: int, default=None):
+                """Safely get field value with default"""
+                return fields[index] if index < len(fields) and fields[index] else default
+            
+            system_id = int(get_field(record.fields, 1)) if get_field(record.fields, 1) else None
+            region_code = int(get_field(record.fields, 7)) if get_field(record.fields, 7) else None
             
             return AMRecord(
-                record_type=record.fields[0],
+                record_type=get_field(record.fields, 0),
                 system_id=system_id,
-                uls_file_number=record.fields[2],
-                ebf_number=record.fields[3],
-                call_sign=record.fields[4],
-                operator_class=record.fields[5],
-                group_code=record.fields[6],
+                uls_file_number=get_field(record.fields, 2),
+                ebf_number=get_field(record.fields, 3),
+                call_sign=get_field(record.fields, 4),
+                operator_class=get_field(record.fields, 5),
+                group_code=get_field(record.fields, 6),
                 region_code=region_code,
-                trustee_call_sign=record.fields[8],
-                trustee_indicator=record.fields[9],
-                physician_certification=record.fields[10],
-                ve_signature=record.fields[11],
-                systematic_call_sign_change=record.fields[12],
-                vanity_call_sign_change=record.fields[13],
-                vanity_relationship=record.fields[14],
-                previous_call_sign=record.fields[15],
-                previous_operator_class=record.fields[16],
-                trustee_name=record.fields[17]
+                trustee_call_sign=get_field(record.fields, 8),
+                trustee_indicator=get_field(record.fields, 9),
+                physician_certification=get_field(record.fields, 10),
+                ve_signature=get_field(record.fields, 11),
+                systematic_call_sign_change=get_field(record.fields, 12),
+                vanity_call_sign_change=get_field(record.fields, 13),
+                vanity_relationship=get_field(record.fields, 14),
+                previous_call_sign=get_field(record.fields, 15),
+                previous_operator_class=get_field(record.fields, 16),
+                trustee_name=get_field(record.fields, 17)
             )
         except (IndexError, ValueError) as e:
             raise MapperError(
@@ -67,49 +71,54 @@ class ENMapper(Mapper):
     def __call__(self, record: Record) -> ENRecord:
         try:
             # Convert field values to appropriate types
-            system_id = int(record.fields[1]) if record.fields[1] else None
-            linked_system_id = int(record.fields[28]) if record.fields[28] else None
+            def get_field(fields: list, index: int, default=None):
+                """Safely get field value with default"""
+                return fields[index] if index < len(fields) and fields[index] else default
+            
+            system_id = int(get_field(record.fields, 1)) if get_field(record.fields, 1) else None
+            linked_system_id = int(get_field(record.fields, 28)) if get_field(record.fields, 28) else None
             
             # Parse date field
             status_date = None
-            if record.fields[26]:
+            date_str = get_field(record.fields, 26)
+            if date_str:
                 try:
-                    month, day, year = record.fields[26].split('/')
+                    month, day, year = date_str.split('/')
                     status_date = date(int(year), int(month), int(day))
                 except ValueError as e:
-                    raise ValueError(f"Invalid status_date format: {record.fields[26]}")
+                    raise ValueError(f"Invalid status_date format: {date_str}")
             
             return ENRecord(
-                record_type=record.fields[0],
+                record_type=get_field(record.fields, 0),
                 system_id=system_id,
-                uls_file_number=record.fields[2],
-                ebf_number=record.fields[3],
-                call_sign=record.fields[4],
-                entity_type=record.fields[5],
-                licensee_id=record.fields[6],
-                entity_name=record.fields[7],
-                first_name=record.fields[8],
-                mi=record.fields[9],
-                last_name=record.fields[10],
-                suffix=record.fields[11],
-                phone=record.fields[12],
-                fax=record.fields[13],
-                email=record.fields[14],
-                street_address=record.fields[15],
-                city=record.fields[16],
-                state=record.fields[17],
-                zip_code=record.fields[18],
-                po_box=record.fields[19],
-                attention_line=record.fields[20],
-                sgin=record.fields[21],
-                frn=record.fields[22],
-                applicant_type_code=record.fields[23],
-                applicant_type_code_other=record.fields[24],
-                status_code=record.fields[25],
+                uls_file_number=get_field(record.fields, 2),
+                ebf_number=get_field(record.fields, 3),
+                call_sign=get_field(record.fields, 4),
+                entity_type=get_field(record.fields, 5),
+                licensee_id=get_field(record.fields, 6),
+                entity_name=get_field(record.fields, 7),
+                first_name=get_field(record.fields, 8),
+                mi=get_field(record.fields, 9),
+                last_name=get_field(record.fields, 10),
+                suffix=get_field(record.fields, 11),
+                phone=get_field(record.fields, 12),
+                fax=get_field(record.fields, 13),
+                email=get_field(record.fields, 14),
+                street_address=get_field(record.fields, 15),
+                city=get_field(record.fields, 16),
+                state=get_field(record.fields, 17),
+                zip_code=get_field(record.fields, 18),
+                po_box=get_field(record.fields, 19),
+                attention_line=get_field(record.fields, 20),
+                sgin=get_field(record.fields, 21),
+                frn=get_field(record.fields, 22),
+                applicant_type_code=get_field(record.fields, 23),
+                applicant_type_code_other=get_field(record.fields, 24),
+                status_code=get_field(record.fields, 25),
                 status_date=status_date,
-                license_type=record.fields[27],
+                license_type=get_field(record.fields, 27),
                 linked_system_id=linked_system_id,
-                linked_call_sign=record.fields[29]
+                linked_call_sign=get_field(record.fields, 29)
             )
         except (IndexError, ValueError) as e:
             raise MapperError(

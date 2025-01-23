@@ -57,6 +57,9 @@ setup(
             "sphinx-rtd-theme>=1.0,<2.0",
             "myst-parser>=2.0,<3.0",  # For Markdown support
         ],
+        "email": [
+            "email-validator>=2.1.0,<3.0",  # For email validation
+        ],
     },
     zip_safe=False,  # For mypy to find py.typed
     classifiers=[

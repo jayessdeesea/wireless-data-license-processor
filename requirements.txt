@@ -1,14 +1,22 @@
 # Core dependencies
-pydantic=2.10.5  # Data validation
-amazon.ion=0.13.0  # Ion format support
-pandas=2.2.3  # Data manipulation
-pyarrow=19.0.0  # Parquet support
+pydantic == 2.10.5  # Data validation
+amazon.ion == 0.13.0  # Ion format support
+pandas == 2.2.3  # Data manipulation
+pyarrow == 19.0.0  # Parquet support
 
 # Type hints
-typing-extensions=4.12.2  # Enhanced typing support
+typing-extensions == 4.12.2  # Enhanced typing support
 
 # CLI support
-click=8.1.8  # Command line interface
+click == 8.1.8  # Command line interface
 
 # Logging
-rich=13.9.4  # Rich terminal output
+rich == 13.9.4  # Rich terminal output
+
+# Testing
+pytest == 8.0.0  # Testing framework
+pytest-cov == 4.1.0  # Coverage reporting
+pytest-xdist == 3.5.0  # Parallel test execution
+
+# Validation
+email-validator == 2.1.0  # Email validation for Pydantic

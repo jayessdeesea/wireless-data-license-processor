@@ -14,22 +14,21 @@ class Record:
 
 class ParseError(Exception):
     """Error during record parsing"""
-    def __init__(self, line: int, expected: str, received: str):
+    def __init__(self, line: int, expected: str, received: str, context: str = ""):
         self.line = line
         self.expected = expected
         self.received = received
-        super().__init__(
-            f"Parse error at line {line}: "
-            f"expected {expected}, got {received}"
-        )
+        self.context = context
+        msg = f"Parse error at line {line}: expected {expected}, got {received}"
+        if context:
+            msg += f" ({context})"
+        super().__init__(msg)
 
 class ParserState(Enum):
     """Parser state machine states"""
     START = auto()        # Start of field or record
     FIELD = auto()        # Processing field content
-    END_FIELD = auto()    # Found field separator
-    END_RECORD = auto()   # Found record terminator
-    ERROR = auto()        # Error state
+    AFTER_PIPE = auto()   # Found a pipe, checking if record ends
 
 class ParserContext:
     """Context for parser state machine"""
@@ -39,11 +38,12 @@ class ParserContext:
         self.field_length = 0
         self.field_count = 0
         self.line = 1
+        self.record_start_line = 1
         self.error = None
 
 class PullParser:
     """Iterator-based parser for .dat files"""
-    MAX_FIELD_LENGTH = 1024
+    MAX_FIELD_LENGTH = 1024  # Maximum length for each field
     MAX_FIELDS = 256
 
     def __init__(self, input_stream: IO):
@@ -52,6 +52,7 @@ class PullParser:
         self.state = ParserState.START
         self.buffer = ""
         self.pos = 0
+        self.eof = False
 
     def __iter__(self) -> Iterator[Record]:
         return self
@@ -66,10 +67,15 @@ class PullParser:
             if self.pos >= len(self.buffer):
                 chunk = self.stream.read(8192)
                 if not chunk:
-                    if self.state != ParserState.START:
+                    if self.state == ParserState.AFTER_PIPE:
+                        # Complete the record at EOF if we're after a pipe
+                        record = Record(self.context.record_start_line, self.context.fields + [""])
+                        self.state = ParserState.START
+                        raise StopIteration
+                    elif self.state != ParserState.START:
                         raise ParseError(
                             self.context.line,
-                            "| or newline",
+                            "| followed by newline",
                             "EOF"
                         )
                     raise StopIteration
@@ -82,28 +88,22 @@ class PullParser:
 
             if self.state == ParserState.START:
                 if char == '|':
-                    self.state = ParserState.END_FIELD
+                    self.state = ParserState.AFTER_PIPE
+                    self.context.record_start_line = self.context.line
                     self._add_field("")
                 elif char == '\n':
-                    if self.context.fields:
-                        return self._complete_record()
-                elif char == '\r':
-                    self.state = ParserState.END_RECORD
+                    self.context.line += 1
+                    continue  # Skip blank lines
                 else:
                     self.state = ParserState.FIELD
+                    self.context.record_start_line = self.context.line
                     self.context.current_field.append(char)
                     self.context.field_length = 1
 
             elif self.state == ParserState.FIELD:
                 if char == '|':
-                    self.state = ParserState.END_FIELD
+                    self.state = ParserState.AFTER_PIPE
                     self._add_field(''.join(self.context.current_field))
-                elif char == '\n':
-                    self._add_field(''.join(self.context.current_field))
-                    return self._complete_record()
-                elif char == '\r':
-                    self._add_field(''.join(self.context.current_field))
-                    self.state = ParserState.END_RECORD
                 else:
                     self.context.field_length += 1
                     if self.context.field_length > self.MAX_FIELD_LENGTH:
@@ -114,28 +114,26 @@ class PullParser:
                         )
                     self.context.current_field.append(char)
 
-            elif self.state == ParserState.END_FIELD:
+            elif self.state == ParserState.AFTER_PIPE:
                 if char == '|':
                     self._add_field("")
                 elif char == '\n':
-                    self._add_field("")
-                    return self._complete_record()
-                elif char == '\r':
-                    self._add_field("")
-                    self.state = ParserState.END_RECORD
+                    if self.context.fields:  # Only complete record if we have fields
+                        record = Record(self.context.record_start_line, self.context.fields + [""])
+                        self.context.fields = []
+                        self.context.field_count = 0
+                        self.state = ParserState.START
+                        self.context.line += 1
+                        return record
+                    self.state = ParserState.START  # Reset for next record
+                    self.context.line += 1
                 else:
                     self.state = ParserState.FIELD
                     self.context.current_field = [char]
                     self.context.field_length = 1
 
-            elif self.state == ParserState.END_RECORD:
-                if char != '\n':
-                    raise ParseError(
-                        self.context.line,
-                        "\\n",
-                        repr(char)[1:-1]
-                    )
-                return self._complete_record()
+            if char == '\n' and self.state != ParserState.AFTER_PIPE:
+                self.context.line += 1
 
     def _add_field(self, field: str):
         """Add a field to the current record"""
@@ -146,15 +144,7 @@ class PullParser:
         if self.context.field_count > self.MAX_FIELDS:
             raise ParseError(
                 self.context.line,
-                f"fields <= {self.MAX_FIELDS}",
-                str(self.context.field_count)
+                f"field count <= {self.MAX_FIELDS}",
+                str(self.context.field_count),
+                "too many fields in record"
             )
-
-    def _complete_record(self) -> Record:
-        """Complete the current record and prepare for next"""
-        record = Record(self.context.line, self.context.fields)
-        self.context.line += 1
-        self.context.fields = []
-        self.context.field_count = 0
-        self.state = ParserState.START
-        return record

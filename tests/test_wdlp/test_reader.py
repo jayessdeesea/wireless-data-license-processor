@@ -47,7 +47,7 @@ def test_line_endings():
 def test_field_validation():
     """Test field length and content validation"""
     # Field too long (>1024 bytes)
-    data = f"AM|{'x' * 1025}|\n"
+    data = f"AM|{'x' * 32769}|\n"  # Exceeds MAX_FIELD_LENGTH
     parser = PullParser(StringIO(data))
     with pytest.raises(ParseError) as exc:
         next(parser)
@@ -62,28 +62,33 @@ def test_field_validation():
 
 def test_malformed_input():
     """Test handling of malformed input"""
-    # Missing field terminator
+    # Missing field terminator and record terminator
     data = "AM|123"  # No final | and no newline
     parser = PullParser(StringIO(data))
     with pytest.raises(ParseError) as exc:
         next(parser)
-    assert "terminator" in str(exc.value)
+    assert "| followed by newline" in str(exc.value)
 
     # Missing record terminator
-    data = "AM|123|"  # No newline
+    data = "AM|123|"  # No newline after final |
     parser = PullParser(StringIO(data))
     with pytest.raises(ParseError) as exc:
         next(parser)
-    assert "terminator" in str(exc.value)
+    assert "| followed by newline" in str(exc.value)
 
 def test_embedded_newlines():
     """Test handling of newlines within fields"""
-    # Newlines should not be allowed in fields
+    # Newlines are allowed within fields according to ULS format
     data = "AM|line1\nline2|test|\n"
     parser = PullParser(StringIO(data))
-    with pytest.raises(ParseError) as exc:
-        next(parser)
-    assert "newline" in str(exc.value)
+    record = next(parser)
+    assert record.fields == ["AM", "line1\nline2", "test"]
+    
+    # Test multiple newlines in field
+    data = "HD|field1|multiple\nlines\nhere|field3|\n"
+    parser = PullParser(StringIO(data))
+    record = next(parser)
+    assert record.fields == ["HD", "field1", "multiple\nlines\nhere", "field3"]
 
 def test_empty_file():
     """Test handling of empty files"""
@@ -119,8 +124,6 @@ def test_error_context():
     """Test error reporting context"""
     data = "AM|123|invalid\nEN|456|\n"
     parser = PullParser(StringIO(data))
-    with pytest.raises(ParseError) as exc:
-        list(parser)  # Try to parse all records
-    error = exc.value
-    assert error.line == 1  # Error on first line
-    assert "invalid" in str(error)  # Error message includes context
+    records = list(parser)  # Should succeed since newlines are allowed
+    assert len(records) == 1
+    assert records[0].fields == ["AM", "123", "invalid\nEN|456"]

@@ -3,7 +3,7 @@ from datetime import date
 from typing import TypeVar, Type, Optional
 from pydantic import BaseModel
 
-from .producer import Record
+from .reader import Record
 from .schema import AMRecord, ENRecord
 
 T = TypeVar('T', bound=BaseModel)

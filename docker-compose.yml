@@ -9,8 +9,4 @@ services:
       - ./data:/data  # Mount the local data directory
     environment:
       - PYTHONUNBUFFERED=1  # Enable real-time logging
-    command: >
-      --input /data/l_amat.zip
-      --output /data/output
-      --format jsonl
-      --verbose
+    command: wdlp -i /data/l_amat.zip -o /data/output

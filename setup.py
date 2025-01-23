@@ -28,7 +28,7 @@ setup(
     long_description_content_type="text/markdown",
     author="FCC Data Tools Team",
     author_email="fcc-data-tools@example.com",
-    url="https://github.com/fcc-data-tools/wdlp",
+    url="https://github.com/jayessdeesea/wireless-data-license-processor",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     package_data={
@@ -83,8 +83,8 @@ setup(
         "data-conversion",
     ],
     project_urls={
-        "Documentation": "https://wdlp.readthedocs.io/",
-        "Source": "https://github.com/fcc-data-tools/wdlp",
-        "Issues": "https://github.com/fcc-data-tools/wdlp/issues",
+        "Documentation": "https://github.com/jayessdeesea/wireless-data-license-processor",
+        "Source": "https://github.com/jayessdeesea/wireless-data-license-processor",
+        "Issues": "https://github.com/jayessdeesea/wireless-data-license-processor/issues",
     },
 )

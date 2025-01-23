@@ -7,9 +7,9 @@ from collections import defaultdict
 from pathlib import Path
 from typing import IO
 
-from .producer import PullParser, ParseError
+from .reader import PullParser, ParseError
 from .mapper import MapperFactory, MapperError
-from .consumer import WriterFactory
+from .writer import WriterFactory
 
 logger = logging.getLogger(__name__)
 

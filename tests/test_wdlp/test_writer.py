@@ -198,11 +198,19 @@ def test_error_handling():
     with TemporaryDirectory() as tmpdir:
         output_path = Path(tmpdir) / "test.jsonl"
         
-        # Test invalid record
-        with pytest.raises(WriterError) as exc:
-            with JSONLWriter(output_path) as writer:
+        # Test invalid record followed by valid record
+        writer = JSONLWriter(output_path)
+        with writer:
+            # First write should fail with unserializable object
+            with pytest.raises(WriterError) as exc:
                 writer.write({"invalid": object()})  # Unserializable object
-        assert "serialization" in str(exc.value)
+            assert "serialization" in str(exc.value)
+        
+        # Try to write valid data in a new context - should fail due to error state
+        with pytest.raises(WriterError) as exc:
+            with writer:
+                writer.write({"test": "data"})
+        assert "error state" in str(exc.value)
         
         # Test file permission error
         readonly_path = Path(tmpdir) / "readonly"

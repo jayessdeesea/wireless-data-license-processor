@@ -1,0 +1,64 @@
+# Docker Compose Requirements
+
+This project enforces containerization through Docker Compose to ensure consistent environments across development, testing, and production.
+
+## Core Rules
+
+1. ALL test execution MUST use Docker Compose:
+   ```bash
+   # Run all tests
+   docker compose run test
+   
+   # Run specific tests
+   docker compose run test tests/test_wdlp/test_integration.py
+   docker compose run test tests/test_wdlp/test_writer.py::test_jsonl_writer
+   ```
+
+2. ALL program execution MUST use Docker Compose:
+   ```bash
+   # Process wireless data license files
+   docker compose up
+   
+   # Process with custom arguments
+   docker compose run wdlp --input /data/custom.zip --output /data/output --format jsonl
+   ```
+
+## Prohibited Actions
+
+The following actions are NOT allowed:
+- Running tests directly with pytest
+- Running the program directly with python
+- Using pip install outside of Docker
+- Modifying system Python or dependencies locally
+
+## Environment Setup
+
+The project uses two Docker services:
+
+1. wdlp (Main Application):
+   - Processes wireless data license files
+   - Mounts ./data for input/output
+   - Uses Python 3.9 base image
+   - Installs project dependencies
+
+2. test (Testing Environment):
+   - Runs pytest with coverage
+   - Mounts source and test directories
+   - Uses same Python 3.9 base image
+   - Includes additional testing dependencies
+
+## Rationale
+
+These rules ensure:
+1. Consistent environments for all developers
+2. Reproducible test results
+3. Isolation from system dependencies
+4. Easy onboarding process
+5. CI/CD pipeline compatibility
+
+## Implementation
+
+See:
+- docker-compose.yml: Service definitions
+- Dockerfile: Main application container
+- Dockerfile.test: Test environment container

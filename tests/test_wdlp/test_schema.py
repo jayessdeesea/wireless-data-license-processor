@@ -75,13 +75,14 @@ def test_en_record_invalid_date():
 def test_en_record_phone_format():
     """Test phone number format validation"""
     # Valid phone number
-    record = ENRecord(record_type="EN", phone="1234567890")
-    assert record.phone == "1234567890"
+    record = ENRecord(record_type="EN", phone="123-456-7890")
+    assert record.phone == "123-456-7890"
 
-    # Invalid phone number
-    with pytest.raises(ValidationError) as exc:
-        ENRecord(record_type="EN", phone="123")  # Too short
-    assert "phone" in str(exc.value)
+    # Invalid phone numbers
+    for invalid_phone in ["123", "1234567890", "123-456-789", "123-45-7890"]:
+        with pytest.raises(ValidationError) as exc:
+            ENRecord(record_type="EN", phone=invalid_phone)
+        assert "phone" in str(exc.value)
 
 def test_en_record_email_format():
     """Test email format validation"""

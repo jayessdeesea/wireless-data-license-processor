@@ -42,13 +42,14 @@ class ProcessingStats:
 
 def setup_logging(level=logging.INFO):
     """Configure logging format and level"""
-    # Always reconfigure logging for tests
-    for handler in logging.root.handlers[:]:
-        logging.root.removeHandler(handler)
-    logging.basicConfig(
-        level=level,
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
+    # Set the log level without removing existing handlers (for pytest caplog)
+    logging.getLogger().setLevel(level)
+    
+    # Only add handler if none exist (preserves pytest caplog)
+    if not logging.getLogger().handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        logging.getLogger().addHandler(handler)
 
 def validate_input(args):
     """Validate command line arguments"""
@@ -59,13 +60,15 @@ def validate_input(args):
     if not zipfile.is_zipfile(input_path):
         raise ValueError(f"Input must be a ZIP archive: {input_path}")
 
-def process_dat_file(stream: IO, filename: str, output_dir: Path, format: str, stats: ProcessingStats):
+def process_dat_file(stream: IO, filename: str, output_dir: Path, format: str, stats: ProcessingStats, verbose: bool = False):
     """Process a single .dat file"""
     # Determine schema from filename
     schema_type = Path(filename).stem.upper()
     
     # Create components
-    parser = PullParser(stream)
+    from io import TextIOWrapper
+    text_stream = TextIOWrapper(stream, encoding='utf-8')
+    parser = PullParser(text_stream, verbose=verbose)
     mapper = MapperFactory.create_mapper(schema_type)
     
     if mapper is None:
@@ -86,14 +89,24 @@ def process_dat_file(stream: IO, filename: str, output_dir: Path, format: str, s
                 writer.write(typed_record.model_dump())
                 stats.record_counts[schema_type] += 1
             except (MapperError, ParseError) as e:
-                logger.error(f"Error processing record: {e}")
+                if isinstance(e, ParseError):
+                    logger.error(
+                        f"Parse error at line {e.line}, column {e.column}:\n"
+                        f"Expected: {e.expected}\n"
+                        f"Received: {e.received}\n"
+                        f"Consumed fields: {e.consumed_fields}\n"
+                        f"Partial field: {e.partial_field}\n"
+                        f"Context: {e.context}"
+                    )
+                else:
+                    logger.error(f"Error processing record: {e}")
                 stats.error_counts[schema_type] += 1
 
 class ProcessingError(Exception):
     """Error during file processing"""
     pass
 
-def process_archive(input_path: Path, output_dir: Path, format: str = "jsonl", progress_callback = None):
+def process_archive(input_path: Path, output_dir: Path, format: str = "jsonl", progress_callback = None, verbose: bool = False):
     """Process all .dat files in ZIP archive"""
     stats = ProcessingStats()
     logger.info(f"Processing {input_path}...")
@@ -117,7 +130,7 @@ def process_archive(input_path: Path, output_dir: Path, format: str = "jsonl", p
                 continue
             
             with zf.open(entry) as f:
-                process_dat_file(f, entry, output_dir, format, stats)
+                process_dat_file(f, entry, output_dir, format, stats, verbose=verbose)
     
     logger.info("Completed processing archive")
     if progress_callback:
@@ -174,7 +187,8 @@ def main(args=None):
         stats = process_archive(
             input_path=Path(parsed_args.input),
             output_dir=Path(parsed_args.output),
-            format=parsed_args.format
+            format=parsed_args.format,
+            verbose=parsed_args.verbose
         )
         
         # Print summary
@@ -182,12 +196,12 @@ def main(args=None):
         
     except ProcessingError as e:
         logger.error(f"Processing failed: {e}")
-        return 1
+        raise SystemExit(1)
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
-        return 1
+        raise SystemExit(1)
         
-    return 0
+    raise SystemExit(0)
 
 if __name__ == '__main__':
     exit(main())

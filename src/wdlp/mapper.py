@@ -31,12 +31,28 @@ class AMMapper(Mapper):
     """Mapper for Amateur License records"""
     def __call__(self, record: Record) -> AMRecord:
         try:
+            # Validate record type first
+            if not record.fields or record.fields[0] != "AM":
+                raise ValueError("Invalid record_type: must be 'AM'")
+                
+            # Then validate field count
+            if len(record.fields) < 2:  # Need at least record_type and system_id
+                raise ValueError("Insufficient number of fields")
+            
             # Convert field values to appropriate types
             def get_field(fields: list, index: int, default=None):
                 """Safely get field value with default"""
                 return fields[index] if index < len(fields) and fields[index] else default
             
-            system_id = int(get_field(record.fields, 1)) if get_field(record.fields, 1) else None
+            # Parse system_id with specific error handling
+            system_id_str = get_field(record.fields, 1)
+            if system_id_str:
+                try:
+                    system_id = int(system_id_str)
+                except ValueError:
+                    raise ValueError(f"Invalid system_id value: {system_id_str}")
+            else:
+                system_id = None
             region_code = int(get_field(record.fields, 7)) if get_field(record.fields, 7) else None
             
             return AMRecord(
@@ -75,8 +91,14 @@ class ENMapper(Mapper):
                 """Safely get field value with default"""
                 return fields[index] if index < len(fields) and fields[index] else default
             
+            # Parse system_id fields
             system_id = int(get_field(record.fields, 1)) if get_field(record.fields, 1) else None
             linked_system_id = int(get_field(record.fields, 28)) if get_field(record.fields, 28) else None
+            
+            # Format phone number
+            phone = get_field(record.fields, 12)
+            if phone and len(phone) == 10:
+                phone = f"{phone[:3]}-{phone[3:6]}-{phone[6:]}"
             
             # Parse date field
             status_date = None
@@ -101,7 +123,7 @@ class ENMapper(Mapper):
                 mi=get_field(record.fields, 9),
                 last_name=get_field(record.fields, 10),
                 suffix=get_field(record.fields, 11),
-                phone=get_field(record.fields, 12),
+                phone=phone,
                 fax=get_field(record.fields, 13),
                 email=get_field(record.fields, 14),
                 street_address=get_field(record.fields, 15),

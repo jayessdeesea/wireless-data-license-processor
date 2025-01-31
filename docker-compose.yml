@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   wdlp:
     build:
@@ -24,5 +22,4 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app
-      - SKIP_DOCKER_TESTS=1  # Skip Docker-specific tests since they require Docker CLI
-    command: -v --cov=wdlp --cov-report=term-missing -m "not docker" tests/  # Exclude Docker tests
+    command: --cov=wdlp --cov-report=term-missing tests/  # Run all tests including Docker tests

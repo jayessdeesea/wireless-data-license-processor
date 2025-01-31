@@ -5,6 +5,13 @@ import zipfile
 from pathlib import Path
 
 @pytest.fixture
+def data_dir(temp_dir):
+    """Provide a temporary directory for test data"""
+    data = temp_dir / 'data'
+    data.mkdir(exist_ok=True)
+    return data
+
+@pytest.fixture
 def test_data_dir():
     """Return path to test data directory"""
     return Path(os.environ.get('TEST_DATA_DIR', '/data/test_data'))

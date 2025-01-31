@@ -9,16 +9,16 @@ COPY src/wdlp ./src/wdlp
 
 RUN pip install --upgrade pip
 
-# Install the package and dependencies
-RUN pip install --no-cache-dir -e .
+# Install the package and all dependencies
+RUN pip install --no-cache-dir -e ".[email]"
 
-# Create data directory
-RUN mkdir /data
+# Create data directories
+RUN mkdir -p /data/input /data/output
 
 # Add debug logging
 ENV PYTHONUNBUFFERED=1
 ENV LOGLEVEL=DEBUG
 
-# Define the default command
-ENTRYPOINT ["wdlp"]
+# Set the entrypoint to run the main module
+ENTRYPOINT ["python", "-m", "wdlp.main"]
 CMD ["--help"]

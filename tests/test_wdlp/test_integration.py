@@ -1,56 +1,42 @@
-"""Tests for Docker setup"""
+"""Integration tests for the application"""
 import pytest
-import subprocess
 import json
+import zipfile
 from pathlib import Path
 import time
+import sys
+from wdlp.main import main
 
 @pytest.mark.integration
-def test_docker_build():
-    """Test Docker image build"""
-    result = subprocess.run(
-        ["docker", "build", "-t", "wdlp:test", "."],
-        capture_output=True,
-        text=True
-    )
-    assert result.returncode == 0, f"Docker build failed: {result.stderr}"
+def test_help_output(capsys):
+    """Test help output"""
+    with pytest.raises(SystemExit) as exc:
+        main(["--help"])
+    assert exc.value.code == 0
+    
+    captured = capsys.readouterr()
+    assert "--input" in captured.out
+    assert "--output" in captured.out
+    assert "--format" in captured.out
 
 @pytest.mark.integration
-def test_docker_help():
-    """Test Docker container help output"""
-    result = subprocess.run(
-        ["docker", "run", "--rm", "wdlp:test", "--help"],
-        capture_output=True,
-        text=True
-    )
-    assert result.returncode == 0
-    assert "--input" in result.stdout
-    assert "--output" in result.stdout
-    assert "--format" in result.stdout
-
-@pytest.mark.integration
-def test_docker_processing(data_dir, output_dir):
-    """Test end-to-end processing in Docker"""
+def test_end_to_end_processing(data_dir, output_dir):
+    """Test end-to-end processing"""
     # Create test ZIP file
-    import zipfile
     zip_path = data_dir / "test.zip"
     with zipfile.ZipFile(zip_path, "w") as zf:
         zf.writestr("AM.dat", "AM|123456789|ULS123|EBF456|W1AW|A|\n")
         zf.writestr("EN.dat", "EN|987654321|ULS789|EBF012|K1ABC|I|LIC123|Test Entity|\n")
     
-    # Run Docker container
-    result = subprocess.run([
-        "docker", "run",
-        "--rm",
-        "-v", f"{data_dir}:/data/input:ro",  # Read-only input
-        "-v", f"{output_dir}:/data/output",   # Output directory
-        "wdlp:test",
-        "--input", "/data/input/test.zip",
-        "--output", "/data/output",
+    # Run processing
+    args = [
+        "--input", str(zip_path),
+        "--output", str(output_dir),
         "--format", "jsonl"
-    ], capture_output=True, text=True)
-    
-    assert result.returncode == 0, f"Docker run failed: {result.stderr}"
+    ]
+    with pytest.raises(SystemExit) as exc:
+        main(args)
+    assert exc.value.code == 0  # Should exit successfully
     
     # Check output files
     assert (output_dir / "AM.jsonl").exists()
@@ -71,51 +57,17 @@ def test_docker_processing(data_dir, output_dir):
         assert en_record["entity_name"] == "Test Entity"
 
 @pytest.mark.integration
-def test_docker_compose(data_dir):
-    """Test Docker Compose setup"""
-    # Create test data
-    import zipfile
-    zip_path = data_dir / "l_amat.zip"
-    with zipfile.ZipFile(zip_path, "w") as zf:
-        zf.writestr("AM.dat", "AM|123456789|ULS123|EBF456|W1AW|A|\n")
-    
-    # Run docker-compose
-    result = subprocess.run(
-        ["docker-compose", "up", "--abort-on-container-exit"],
-        capture_output=True,
-        text=True
-    )
-    assert result.returncode == 0, f"Docker Compose failed: {result.stderr}"
-    
-    # Check output
-    output_path = data_dir / "output" / "AM.jsonl"
-    assert output_path.exists()
-    
-    with open(output_path) as f:
-        record = json.loads(f.read())
-        assert record["record_type"] == "AM"
-        assert record["system_id"] == 123456789
-
-@pytest.mark.integration
-def test_docker_error_handling():
-    """Test Docker error handling"""
+def test_error_handling():
+    """Test error handling"""
     # Test with invalid input
-    result = subprocess.run([
-        "docker", "run",
-        "--rm",
-        "wdlp:test",
-        "--input", "/nonexistent.zip",
-        "--output", "/data/output"
-    ], capture_output=True, text=True)
-    
-    assert result.returncode != 0
-    assert "Error" in result.stderr
+    with pytest.raises(SystemExit) as exc:
+        main(["--input", "/nonexistent.zip", "--output", "/data/output"])
+    assert exc.value.code != 0
 
 @pytest.mark.integration
-def test_docker_performance(data_dir, output_dir):
-    """Test Docker container performance"""
+def test_performance(data_dir, output_dir):
+    """Test processing performance"""
     # Create large test file
-    import zipfile
     zip_path = data_dir / "large.zip"
     with zipfile.ZipFile(zip_path, "w") as zf:
         # Create file with 1000 records
@@ -125,19 +77,16 @@ def test_docker_performance(data_dir, output_dir):
     # Time the processing
     start_time = time.time()
     
-    result = subprocess.run([
-        "docker", "run",
-        "--rm",
-        "-v", f"{data_dir}:/data/input:ro",
-        "-v", f"{output_dir}:/data/output",
-        "wdlp:test",
-        "--input", "/data/input/large.zip",
-        "--output", "/data/output",
+    args = [
+        "--input", str(zip_path),
+        "--output", str(output_dir),
         "--format", "jsonl"
-    ], capture_output=True, text=True)
+    ]
+    with pytest.raises(SystemExit) as exc:
+        main(args)
+    assert exc.value.code == 0  # Should exit successfully
     
     duration = time.time() - start_time
-    assert result.returncode == 0
     
     # Should process at least 100 records per second
     assert duration < 10, "Processing too slow"

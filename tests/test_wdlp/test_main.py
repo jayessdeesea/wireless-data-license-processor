@@ -4,7 +4,8 @@ import zipfile
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from wdlp.main import main, process_archive, ProcessingError
+import logging
+from wdlp.main import main, process_archive, ProcessingError, setup_logging
 
 @pytest.fixture
 def test_zip():
@@ -13,15 +14,15 @@ def test_zip():
         zip_path = Path(tmpdir) / "test.zip"
         
         # Create test .dat files
-        with zipfile.ZipFile(zip_path, "w") as zf:
+        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             # AM record
-            zf.writestr("AM.dat", "AM|123456789|ULS123|EBF456|W1AW|A|\n")
+            zf.writestr("AM.dat", "AM|123456789|ULS123|EBF456|W1AW|A|\n".encode('utf-8'))
             
             # EN record
-            zf.writestr("EN.dat", "EN|987654321|ULS789|EBF012|K1ABC|I|LIC123|Test Entity|\n")
+            zf.writestr("EN.dat", "EN|987654321|ULS789|EBF012|K1ABC|I|LIC123|Test Entity|\n".encode('utf-8'))
             
             # Non-.dat file
-            zf.writestr("README.txt", "Test file")
+            zf.writestr("README.txt", "Test file".encode('utf-8'))
         
         yield zip_path
 
@@ -86,15 +87,21 @@ def test_missing_input():
 
 def test_invalid_format():
     """Test handling of invalid output format"""
-    with pytest.raises(ValueError) as exc:
-        process_archive(
-            input_path=Path("test.zip"),
-            output_dir=Path("output"),
-            format="invalid"
-        )
-    assert "format" in str(exc.value).lower()
+    with TemporaryDirectory() as tmpdir:
+        # Create test zip file
+        zip_path = Path(tmpdir) / "test.zip"
+        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("AM.dat", "AM|123|W1AW|A|\n".encode('utf-8'))
+        
+        with pytest.raises(ValueError) as exc:
+            process_archive(
+                input_path=zip_path,
+                output_dir=Path(tmpdir) / "output",
+                format="invalid"
+            )
+        assert "format" in str(exc.value).lower()
 
-def test_cli_arguments():
+def test_cli_arguments(capsys):
     """Test CLI argument parsing"""
     with TemporaryDirectory() as tmpdir:
         input_path = Path(tmpdir) / "test.zip"
@@ -103,29 +110,46 @@ def test_cli_arguments():
         # Test required arguments missing
         with pytest.raises(SystemExit):
             main([])
+        captured = capsys.readouterr()
+        assert "required" in captured.err
+        assert "--input" in captured.err
+        assert "--output" in captured.err
+        
+        # Create test zip file
+        zip_path = Path(tmpdir) / "test.zip"
+        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("AM.dat", "AM|123|W1AW|A|\n".encode('utf-8'))
         
         # Test valid arguments
-        with pytest.raises(ProcessingError):  # Will fail because file doesn't exist
+        with pytest.raises(SystemExit) as exc:
             main([
-                "--input", str(input_path),
+                "--input", str(zip_path),
                 "--output", str(output_dir),
                 "--format", "jsonl"
             ])
+        assert exc.value.code == 0  # Should succeed
+        captured = capsys.readouterr()
+        assert "Processing Summary" in captured.out
 
 def test_output_directory_creation():
     """Test output directory handling"""
     with TemporaryDirectory() as tmpdir:
         output_dir = Path(tmpdir) / "nested" / "output"
         
-        # Process archive (will fail but should create directory)
-        with pytest.raises(ProcessingError):
-            process_archive(
-                input_path=Path("nonexistent.zip"),
-                output_dir=output_dir
-            )
+        # Create test zip file
+        zip_path = Path(tmpdir) / "test.zip"
+        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("AM.dat", "AM|123|W1AW|A|\n".encode('utf-8'))
         
-        # Directory should be created
+        # Process archive
+        stats = process_archive(
+            input_path=zip_path,
+            output_dir=output_dir
+        )
+        
+        # Directory should be created and contain output
         assert output_dir.exists()
+        assert (output_dir / "AM.jsonl").exists()
 
 def test_progress_callback():
     """Test progress reporting"""
@@ -185,18 +209,64 @@ def test_performance_monitoring(test_zip):
         assert stats.elapsed_time > 0
         assert isinstance(stats.elapsed_time, float)
 
+def test_binary_data_handling():
+    """Test handling of binary data in fields"""
+    with TemporaryDirectory() as tmpdir:
+        zip_path = Path(tmpdir) / "binary_test.zip"
+        output_dir = Path(tmpdir) / "output"
+        
+        # Create test data with binary content
+        test_data = []
+        # Create test data with fields at their max length
+        test_data.append(f"AM|123456789|{'x' * 14}|{'x' * 30}|W1AW|A|\n")  # Use max length for uls_file_number and ebf_number
+        
+        # Create ZIP with test data
+        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("AM.dat", ''.join(test_data).encode('utf-8'))
+        
+        # Process archive
+        stats = process_archive(
+            input_path=zip_path,
+            output_dir=output_dir,
+            format="jsonl"
+        )
+        
+        # Verify processing succeeded
+        assert stats.record_counts["AM"] == 1
+        assert len(stats.error_counts) == 0
+        
+        # Verify record content
+        with open(output_dir / "AM.jsonl") as f:
+            am_record = json.loads(f.read())
+            assert am_record["record_type"] == "AM"
+            assert len(am_record["uls_file_number"]) == 14  # Max length field was preserved
+            assert len(am_record["ebf_number"]) == 30  # Max length field was preserved
+            assert am_record["call_sign"] == "W1AW"
+
 def test_verbose_mode(test_zip, caplog):
     """Test verbose logging output"""
     with TemporaryDirectory() as tmpdir:
         output_dir = Path(tmpdir) / "output"
         
-        # Process with verbose logging
-        main([
-            "--input", str(test_zip),
-            "--output", str(output_dir),
-            "--verbose"
-        ])
+        # Create test zip file
+        zip_path = Path(tmpdir) / "test.zip"
+        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("AM.dat", "AM|123|W1AW|A|\n".encode('utf-8'))
         
-        # Check log output
-        assert any("Processing" in msg for msg in caplog.messages)
-        assert any("Completed" in msg for msg in caplog.messages)
+        # Configure logging
+        setup_logging(level=logging.DEBUG)
+        
+        # Process with verbose logging
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--input", str(zip_path),
+                "--output", str(output_dir),
+                "--verbose"
+            ])
+        assert exc.value.code == 0  # Should exit successfully
+        
+        # Check log output and file creation
+        log_messages = [record.message for record in caplog.records]
+        assert any("Processing" in msg for msg in log_messages), "No 'Processing' message found"
+        assert any("Completed" in msg for msg in log_messages), "No 'Completed' message found"
+        assert (output_dir / "AM.jsonl").exists()

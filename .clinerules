@@ -1,4 +1,4 @@
-# Docker Compose Requirements
+# Docker Compose Requirements 
 
 This project enforces containerization through Docker Compose to ensure consistent environments across development, testing, and production.
 
